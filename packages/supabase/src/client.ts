@@ -20,9 +20,14 @@ import type { DocumentRecord } from '../../shared/src/types/document';
 import type { Provider } from '../../shared/src/types/provider';
 import type { AuditLog } from '../../shared/src/types/audit';
 
+// The literal `import.meta.env` token must appear (no `import.meta?.env`, no aliasing): Vite only
+// injects env vars into modules it recognises that exact text in, so an optional-chained lookup
+// silently reads nothing in the dev server even though the production build inlines it.
+const viteEnv = (import.meta.env ?? {}) as Record<string, string | undefined>;
+
 const getEnv = (key: string): string | undefined => {
-  const fromVite = (import.meta as any)?.env?.[key];
-  if (fromVite) return fromVite as string;
+  const fromVite = viteEnv[key];
+  if (fromVite) return fromVite;
   const g = globalThis as Record<string, any>;
   return g.process?.env?.[key];
 };
