@@ -9,6 +9,8 @@ export interface Reminder {
   reminder_date: string;
   frequency: ReminderFrequency;
   is_completed: boolean;
+  completed_at: string | null;
+  last_notified_at: string | null;
   notify_client: boolean;
   notify_adviser: boolean;
   related_document_id: string | null;

@@ -1,9 +1,10 @@
-import { localStore } from '@supabase-pkg/client';
-import { Notification } from '@shared/types/notification';
+import { dataStore } from '@supabase-pkg/client';
+import { markNotificationsRead } from '@supabase-pkg/helpers';
+import type { Notification } from '@shared/types/notification';
 
 export const notificationService = {
   getNotifications(): Notification[] {
-    const state = localStore.getState();
+    const state = dataStore.getState();
     const userId = state.currentUser?.id;
     return state.notifications.filter((n) => n.user_id === userId);
   },
@@ -12,25 +13,11 @@ export const notificationService = {
     return this.getNotifications().filter((n) => !n.is_read).length;
   },
 
-  markAllAsRead(): void {
-    const state = localStore.getState();
-    const userId = state.currentUser?.id;
-    state.notifications.forEach((n) => {
-      if (n.user_id === userId) {
-        n.is_read = true;
-        n.read_at = new Date().toISOString();
-      }
-    });
-    localStore.saveState();
+  async markAllAsRead(): Promise<void> {
+    await markNotificationsRead(this.getNotifications().filter((n) => !n.is_read).map((n) => n.id));
   },
 
-  markAsRead(id: string): void {
-    const state = localStore.getState();
-    const notif = state.notifications.find((n) => n.id === id);
-    if (notif) {
-      notif.is_read = true;
-      notif.read_at = new Date().toISOString();
-      localStore.saveState();
-    }
+  async markAsRead(id: string): Promise<void> {
+    await markNotificationsRead([id]);
   },
 };

@@ -1,15 +1,32 @@
-# Royal Square Financial Architecture
+# Architecture
 
-## Overview
-Royal Square Financial is a unified wealth management, advisory services, and claims management platform designed for the South African financial services sector.
+```
+Client PWA (apps/client)         Royal Desk (apps/dashboard)
+        \                               /
+         \-- packages/shared (auth, html, format, types) --/
+                        |
+              packages/supabase (client, dataStore, helpers)
+                        |
+        Supabase: Auth · Postgres + RLS + RPC · Storage · Realtime
+```
 
-The platform provides a dual interface:
-1. **Client PWA** (`apps/client`): A mobile-first Progressive Web App for clients to monitor net worth, track financial goals, initiate service requests, report motor vehicle accidents, view claim timelines, upload secure compliance documents, and communicate with advisers.
-2. **Adviser Dashboard** (`apps/dashboard`): A desktop-oriented operational command center for financial advisers and compliance officers to manage clients, adjudicate workflows, update claims, triage tasks and reminders, inspect audit logs, and coordinate provider communications.
+* One React shell (`src/App.tsx`) mounts either the client app or the Royal Desk according to the **role stored
+  in the database** (`profiles.role`). The cached session in `localStorage` is only used for first paint; it is
+  re-verified against Supabase on every load.
+* Both apps render from the same `dataStore`, which is rebuilt from Supabase after every change and whenever
+  Realtime reports one. This is what keeps the client and the adviser looking at identical records.
+* Screens render HTML strings. Every template uses the `html` tag from `packages/shared/src/html.ts`, which
+  escapes interpolated values by default. Never build markup with plain template strings: request titles,
+  messages and names are typed by other users.
+* Live refreshes are held back while a user is typing so a form is never wiped by an incoming update.
 
-## Technology Stack
-- **Frontend Architecture**: Pure Vanilla TypeScript, semantic HTML5, modern CSS3 (custom responsive design token system). No bloated single-page framework overhead (no React/Angular/Vue dependencies in client/dashboard core logic).
-- **Visualization**: Chart.js for asset allocation and net worth history.
-- **Backend & Persistence**: Supabase (PostgreSQL 15+, Supabase Auth, Row Level Security, Secure Storage, Supabase Realtime).
-- **PWA**: Service Worker with offline shell caching, Web App Manifest, push notification ready.
-- **Mock Integrations**: Realistic provider simulation layer (`mocks/insurer`, `mocks/providers`, `mocks/email`) modeling Discovery, Old Mutual, Sanlam, Liberty, Santam, and Allan Gray.
+## Repository layout
+
+| Path | Contents |
+| --- | --- |
+| `apps/client` | Mobile-first client portal |
+| `apps/dashboard` | Adviser / admin desk |
+| `packages/shared` | Auth, `html` escaping, formatters, types, constants (claim stages, request types) |
+| `packages/supabase` | Supabase client, `dataStore`, hydration, realtime, document helpers |
+| `supabase/migrations` | Schema, RLS, functions, triggers, storage, realtime |
+| `supabase/schema.sql` | Consolidated schema for new projects |

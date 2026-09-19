@@ -16,10 +16,12 @@ export interface AuditLog {
   action: AuditAction;
   table_name: string | null;
   record_id: string | null;
+  client_id: string | null;
   description: string | null;
   old_data: Record<string, any> | null;
   new_data: Record<string, any> | null;
   ip_address: string | null;
   created_at: string;
   user_email?: string;
+  user_name?: string;
 }

@@ -1,78 +1,76 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { ClientApp } from '@client/app';
 import { DashboardApp } from '@dashboard/app';
-import { getSession, AuthSession, isAdminPath } from '@shared/auth';
+import {
+  getSession,
+  initAuthListener,
+  isAdminPath,
+  isStaff,
+  logout,
+  restoreSession,
+  syncSessionWithProfile,
+  type AuthSession,
+} from '@shared/auth';
 import { LandingPage } from './LandingPage';
-import { hydrateRemoteState } from '@supabase-pkg/client';
+import {
+  dataStore,
+  hydrateRemoteState,
+  isSupabaseConfigured,
+  startRealtime,
+  stopRealtime,
+} from '@supabase-pkg/client';
 import '@client/styles/main.css';
 import '@dashboard/styles/main.css';
 
-type ScreenView = 'royal' | 'client';
-type DeviceMode = 'auto' | 'laptop' | 'tablet' | 'phone';
+type LoadStatus = 'idle' | 'loading' | 'ready' | 'error';
+
+function FullScreenMessage({ title, children }: { title: string; children?: React.ReactNode }) {
+  return (
+    <div className="min-h-screen bg-[#071326] px-6 py-16 text-center text-slate-200 flex flex-col items-center justify-center">
+      <h1 className="text-lg font-semibold text-white">{title}</h1>
+      <div className="mt-3 max-w-md text-sm leading-relaxed text-slate-300">{children}</div>
+    </div>
+  );
+}
 
 export default function App() {
-  const [windowWidth, setWindowWidth] = useState<number>(() => {
-    if (typeof window !== 'undefined') return window.innerWidth;
-    return 1200;
-  });
-
   const [session, setSession] = useState<AuthSession | null>(() => getSession());
+  const [authChecked, setAuthChecked] = useState(false);
   const [showAuth, setShowAuth] = useState<boolean>(() => Boolean(getSession()) || isAdminPath());
-  const [dataReady, setDataReady] = useState<boolean>(() => !getSession());
-
-  // Current active screen: default based on active role if logged in, else screen size
-  const [activeView, setActiveView] = useState<ScreenView>(() => {
-    if (isAdminPath()) {
-      return 'royal';
-    }
-    const s = getSession();
-    if (s?.user) {
-      return s.user.role === 'client' ? 'client' : 'royal';
-    }
-    if (typeof window !== 'undefined') {
-      return window.innerWidth >= 1024 ? 'royal' : 'client';
-    }
-    return 'royal';
-  });
-
-  // Device simulation mode for testing on laptops or desktops
-  const [deviceMode, setDeviceMode] = useState<DeviceMode>('auto');
+  const [status, setStatus] = useState<LoadStatus>('idle');
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [reloadKey, setReloadKey] = useState(0);
 
   const clientContainerRef = useRef<HTMLDivElement>(null);
   const dashboardContainerRef = useRef<HTMLDivElement>(null);
-  const clientAppInstance = useRef<ClientApp | null>(null);
-  const dashboardAppInstance = useRef<DashboardApp | null>(null);
 
-  // Track window resizing
+  const userId = session?.user.id ?? null;
+  // Signed-in users land where their role belongs. Signed-out visitors get the client portal,
+  // except on the staff path which shows the Royal Desk sign-in.
+  const activeView: 'royal' | 'client' = session ? (isStaff(session.user.role) ? 'royal' : 'client') : isAdminPath() ? 'royal' : 'client';
+
+  // Verify the cached session against Supabase before trusting it.
   useEffect(() => {
-    const handleResize = () => {
-      setWindowWidth(window.innerWidth);
-    };
-    window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
+    if (!isSupabaseConfigured) return;
+    initAuthListener();
+    restoreSession()
+      .catch((error) => console.error('Unable to restore session:', error))
+      .finally(() => {
+        setSession(getSession());
+        setAuthChecked(true);
+      });
   }, []);
 
-  // Listen to authentication changes
   useEffect(() => {
     const handleAuthChange = () => {
-      const cur = getSession();
-      setSession(cur);
-      setDataReady(!cur);
-      if (cur?.user) {
-        setShowAuth(true);
-        if (cur.user.role === 'admin' || cur.user.role === 'adviser') {
-          setActiveView('royal');
-        } else {
-          setActiveView('client');
-        }
-      }
+      const current = getSession();
+      setSession(current);
+      if (current) setShowAuth(true);
     };
-
-    window.addEventListener('royal-square-auth-change', handleAuthChange);
     const handleReturnToLanding = () => {
-      setSession(null);
-      setShowAuth(false);
+      if (!getSession()) setShowAuth(false);
     };
+    window.addEventListener('royal-square-auth-change', handleAuthChange);
     window.addEventListener('return-to-landing', handleReturnToLanding);
     return () => {
       window.removeEventListener('royal-square-auth-change', handleAuthChange);
@@ -80,92 +78,112 @@ export default function App() {
     };
   }, []);
 
+  // If an administrator changes this user's role or name, follow it without a reload.
+  useEffect(() => dataStore.subscribe(() => syncSessionWithProfile(dataStore.getState().currentUser)), []);
+
+  // Load the user's data, then keep it live.
   useEffect(() => {
-    if (!session) {
-      setDataReady(true);
+    if (!isSupabaseConfigured || !authChecked) return;
+
+    if (!userId) {
+      stopRealtime();
+      dataStore.reset();
+      setLoadError(null);
+      setStatus('ready');
       return;
     }
 
     let active = true;
-    setDataReady(false);
+    setStatus('loading');
+    setLoadError(null);
     hydrateRemoteState()
+      .then(() => {
+        if (!active) return;
+        startRealtime();
+        setStatus('ready');
+      })
       .catch((error) => {
         console.error('Unable to load Supabase data:', error);
-      })
-      .finally(() => {
-        if (active) setDataReady(true);
+        if (!active) return;
+        setLoadError(error instanceof Error ? error.message : 'Unable to load your data.');
+        setStatus('error');
       });
 
     return () => {
       active = false;
     };
-  }, [session]);
+  }, [userId, authChecked, reloadKey]);
 
-  // Mount/remount instances when activeView, deviceMode, or window size changes
+  const ready = isSupabaseConfigured && authChecked && status === 'ready';
+  const showLanding = !session && !showAuth && !isAdminPath();
+
   useEffect(() => {
+    if (!ready || showLanding) return;
+
     if (activeView === 'royal' && dashboardContainerRef.current) {
-      dashboardAppInstance.current = new DashboardApp(dashboardContainerRef.current);
+      const app = new DashboardApp(dashboardContainerRef.current);
+      return () => app.destroy();
     }
-  }, [activeView, deviceMode, showAuth, session, dataReady]);
-
-  useEffect(() => {
     if (activeView === 'client' && clientContainerRef.current) {
-      clientAppInstance.current = new ClientApp(clientContainerRef.current);
+      const app = new ClientApp(clientContainerRef.current);
+      return () => app.destroy();
     }
-  }, [activeView, deviceMode, showAuth, session, dataReady]);
+  }, [ready, showLanding, activeView, userId]);
 
-  if (!session && !showAuth && !isAdminPath()) {
+  if (!isSupabaseConfigured) {
+    return (
+      <FullScreenMessage title="Royal Square is not connected to a database yet">
+        <p>
+          Set <code className="rounded bg-white/10 px-1.5 py-0.5">VITE_SUPABASE_URL</code> and{' '}
+          <code className="rounded bg-white/10 px-1.5 py-0.5">VITE_SUPABASE_ANON_KEY</code> in your <code>.env</code> file
+          to your Supabase project values, then restart the dev server.
+        </p>
+      </FullScreenMessage>
+    );
+  }
+
+  if (!authChecked) {
+    return <FullScreenMessage title="Loading…" />;
+  }
+
+  if (showLanding) {
     return <LandingPage onLogin={() => setShowAuth(true)} />;
   }
 
-  if (session && !dataReady) {
-    return <div className="min-h-screen bg-[#071326] p-8 text-center text-sm text-slate-300">Loading your secure workspace...</div>;
+  if (session && status === 'error') {
+    return (
+      <FullScreenMessage title="We couldn't load your workspace">
+        <p>{loadError}</p>
+        <div className="mt-6 flex items-center justify-center gap-3">
+          <button
+            onClick={() => setReloadKey((key) => key + 1)}
+            className="rounded-xl bg-amber-400 px-5 py-2.5 text-xs font-bold text-slate-950 hover:bg-amber-300"
+          >
+            Try again
+          </button>
+          <button
+            onClick={() => void logout()}
+            className="rounded-xl bg-white/10 px-5 py-2.5 text-xs font-medium text-white hover:bg-white/20"
+          >
+            Sign out
+          </button>
+        </div>
+      </FullScreenMessage>
+    );
   }
 
-  // Determine frame styling based on simulated deviceMode and viewport
-  const isSimulatedFrame = deviceMode === 'phone' || deviceMode === 'tablet';
+  if (session && status !== 'ready') {
+    return <FullScreenMessage title="Loading your secure workspace…" />;
+  }
 
   return (
     <div className="min-h-screen bg-[#F1F5F9] text-slate-900 flex flex-col antialiased selection:bg-amber-400 selection:text-slate-900">
-      {/* Main Viewport Container */}
-      <main className={`flex-1 w-full ${isSimulatedFrame ? 'py-6 px-4 flex flex-col items-center justify-start bg-slate-900/10' : ''}`}>
-        {isSimulatedFrame && (
-          <div className="mb-2 text-xs text-slate-500 font-medium flex items-center space-x-2">
-            <span>Viewing {activeView === 'royal' ? 'Royal Desk' : 'Client Portal'} on simulated {deviceMode === 'phone' ? 'Smartphone (390px)' : 'Tablet (768px)'}</span>
-            <button
-              onClick={() => setDeviceMode('auto')}
-              className="text-blue-600 hover:underline text-[11px]"
-            >
-              Reset to Full Screen
-            </button>
-          </div>
+      <main className="flex-1 w-full">
+        {activeView === 'royal' ? (
+          <div id="dashboard-app" ref={dashboardContainerRef} className="w-full min-h-full" />
+        ) : (
+          <div id="app" ref={clientContainerRef} className="w-full min-h-full" />
         )}
-
-        <div
-          className={`w-full transition-all duration-300 ${
-            deviceMode === 'phone'
-              ? 'max-w-[390px] bg-white rounded-[38px] shadow-2xl border-[8px] border-slate-900 overflow-hidden min-h-[780px] relative'
-              : deviceMode === 'tablet'
-              ? 'max-w-[768px] bg-white rounded-2xl shadow-2xl border border-slate-300/80 overflow-hidden min-h-[820px]'
-              : 'min-h-full'
-          }`}
-        >
-          {/* Phone Dynamic Island / Speaker notch simulation */}
-          {deviceMode === 'phone' && (
-            <div className="w-full bg-slate-900 h-5 flex items-center justify-center relative">
-              <div className="w-24 h-3.5 bg-slate-950 rounded-b-xl flex items-center justify-center space-x-2">
-                <div className="w-2 h-2 rounded-full bg-slate-800" />
-                <div className="w-8 h-1 rounded-full bg-slate-800" />
-              </div>
-            </div>
-          )}
-
-          {activeView === 'royal' ? (
-            <div id="dashboard-app" ref={dashboardContainerRef} className="w-full min-h-full" />
-          ) : (
-            <div id="app" ref={clientContainerRef} className="w-full min-h-full" />
-          )}
-        </div>
       </main>
     </div>
   );

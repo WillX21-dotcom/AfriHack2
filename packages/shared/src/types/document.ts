@@ -19,6 +19,8 @@ export interface DocumentRecord {
   document_type: DocumentType;
   name: string;
   storage_path: string;
+  request_id: string | null;
+  claim_id: string | null;
   mime_type: string | null;
   file_size: number | null;
   is_verified: boolean;

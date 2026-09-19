@@ -1,13 +1,15 @@
-import { UserRole } from './constants/roles';
-import { supabase } from '@supabase-pkg/client';
+import type { UserRole } from './constants/roles';
+import type { Profile } from './types/user';
+import { supabase, dataStore, stopRealtime } from '@supabase-pkg/client';
 
 export const SESSION_STORAGE_KEY = 'royal-square-session';
+export const MIN_PASSWORD_LENGTH = 8;
 
 export interface AuthUser {
   id: string;
   email: string;
   fullName: string;
-  role: 'admin' | 'client' | 'adviser';
+  role: UserRole;
   phone?: string;
 }
 
@@ -17,77 +19,64 @@ export interface AuthSession {
   createdAt: string;
 }
 
+/**
+ * The staff sign-in lives on this URL path. It is only a routing convenience so advisers land on
+ * the Royal Desk sign-in; it is NOT a security boundary. Access is decided by the role stored on
+ * the user's profile row in the database, which users cannot edit.
+ */
 export const ADMIN_PATH_UUID = '7838bc41-d851-427a-8111-6797b789ec90';
-const ADMIN_PATH_PASSWORD = '1234as';
-const ADMIN_GATE_STORAGE_KEY = 'royal-square-admin-gate';
-
-export function matchesAdminPath(value?: string): boolean {
-  const normalized = value?.trim().toLowerCase();
-  if (!normalized) return false;
-  return normalized === ADMIN_PATH_UUID.toLowerCase() || normalized.includes(ADMIN_PATH_UUID.toLowerCase());
-}
 
 export function isAdminPath(): boolean {
   if (typeof window === 'undefined') return false;
-  return matchesAdminPath(`${window.location.pathname} ${window.location.search} ${window.location.hash}`);
+  const location = `${window.location.pathname} ${window.location.search} ${window.location.hash}`.toLowerCase();
+  return location.includes(ADMIN_PATH_UUID);
 }
 
-export function isAdminGateUnlocked(): boolean {
-  if (!isAdminPath() || typeof sessionStorage === 'undefined') return false;
-  return sessionStorage.getItem(ADMIN_GATE_STORAGE_KEY) === 'unlocked';
+export function isStaff(role: string | null | undefined): boolean {
+  return role === 'admin' || role === 'adviser' || role === 'compliance';
 }
 
-export function unlockAdminGate(password: string): boolean {
-  if (password.trim() !== ADMIN_PATH_PASSWORD || typeof sessionStorage === 'undefined') return false;
-  sessionStorage.setItem(ADMIN_GATE_STORAGE_KEY, 'unlocked');
-  return true;
+function displayName(profile: Pick<Profile, 'first_name' | 'last_name' | 'email'>): string {
+  const name = `${profile.first_name || ''} ${profile.last_name || ''}`.trim();
+  return name || (profile.email || '').split('@')[0] || 'Account holder';
 }
 
-export function clearAdminGate(): void {
-  if (typeof sessionStorage !== 'undefined') sessionStorage.removeItem(ADMIN_GATE_STORAGE_KEY);
+function buildSession(profile: Profile, token: string): AuthSession {
+  return {
+    user: {
+      id: profile.id,
+      email: profile.email || '',
+      fullName: displayName(profile),
+      role: profile.role,
+      phone: profile.phone || undefined,
+    },
+    token,
+    createdAt: new Date().toISOString(),
+  };
 }
 
 function formatAuthError(error: unknown, fallback: string): string {
-  const message = error instanceof Error ? error.message : String(error || '');
-  if (message.toLowerCase().includes('rate limit')) {
-    return 'Email delivery is temporarily rate-limited. Confirm the existing account or disable Confirm email in Supabase Auth settings, then try again.';
+  const message = error instanceof Error ? error.message : String((error as any)?.message || error || '');
+  const lowered = message.toLowerCase();
+  if (lowered.includes('rate limit')) {
+    return 'Too many attempts right now. Please wait a few minutes and try again.';
+  }
+  if (lowered.includes('invalid login credentials')) {
+    return 'Incorrect email address or password.';
+  }
+  if (lowered.includes('email not confirmed')) {
+    return 'Please confirm your email address using the link we sent you, then sign in.';
   }
   return message || fallback;
 }
 
-export function resolveRoleFromAccount(context: {
-  id?: string;
-  email?: string;
-  fullName?: string;
-  explicitRole?: 'admin' | 'client' | 'adviser';
-}): 'admin' | 'client' | 'adviser' {
-  const accountString = [context.id, context.email, context.fullName, context.explicitRole].join(' ');
-
-  if (matchesAdminPath(accountString)) {
-    return 'admin';
-  }
-
-  if (context.explicitRole) {
-    return context.explicitRole;
-  }
-
-  if (context.email) {
-    return determineRoleFromEmail(context.email);
-  }
-
-  return 'client';
-}
-
-/**
- * Get the current active session from localStorage
- */
+/** The cached session (used for fast first paint). `restoreSession` verifies it against Supabase. */
 export function getSession(): AuthSession | null {
   try {
     const raw = localStorage.getItem(SESSION_STORAGE_KEY);
     if (!raw) return null;
     return JSON.parse(raw) as AuthSession;
-  } catch (err) {
-    console.error('Failed to parse royal-square-session:', err);
+  } catch {
     return null;
   }
 }
@@ -97,105 +86,136 @@ export function getSessionDisplayName(): string {
   return session?.user.fullName || session?.user.email?.split('@')[0] || 'Account holder';
 }
 
-/**
- * Save session to localStorage and broadcast change
- */
 export function saveSession(session: AuthSession): void {
   try {
     localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(session));
-    window.dispatchEvent(new CustomEvent('royal-square-auth-change', { detail: { session } }));
   } catch (err) {
-    console.error('Failed to save royal-square-session:', err);
+    console.error('Failed to cache session:', err);
   }
+  window.dispatchEvent(new CustomEvent('royal-square-auth-change', { detail: { session } }));
 }
 
-/**
- * Clear session and broadcast change
- */
 export function clearSession(): void {
   try {
     localStorage.removeItem(SESSION_STORAGE_KEY);
-    window.dispatchEvent(new CustomEvent('royal-square-auth-change', { detail: { session: null } }));
   } catch (err) {
-    console.error('Failed to clear royal-square-session:', err);
+    console.error('Failed to clear cached session:', err);
   }
+  window.dispatchEvent(new CustomEvent('royal-square-auth-change', { detail: { session: null } }));
+}
+
+function sameIdentity(a: AuthSession | null, b: AuthSession): boolean {
+  return Boolean(a) && a!.user.id === b.user.id && a!.user.role === b.user.role && a!.user.fullName === b.user.fullName && a!.user.email === b.user.email;
+}
+
+async function fetchProfile(userId: string): Promise<Profile | null> {
+  const { data, error } = await supabase.from('profiles').select('*').eq('id', userId).maybeSingle();
+  if (error) throw error;
+  return (data as Profile | null) ?? null;
 }
 
 /**
- * Determine role from email address
+ * Re-derive the session from Supabase Auth + the profile row. The role always comes from the
+ * database, so a tampered localStorage entry cannot grant access to the dashboard.
  */
-export function determineRoleFromEmail(email: string): 'admin' | 'client' | 'adviser' {
-  const normalized = email.trim().toLowerCase();
+export async function restoreSession(): Promise<AuthSession | null> {
+  const { data } = await supabase.auth.getSession();
+  const authSession = data.session;
 
-  if (!normalized) {
-    return 'client';
+  if (!authSession) {
+    if (getSession()) clearSession();
+    return null;
   }
 
-  return 'client';
+  let profile: Profile | null = null;
+  try {
+    profile = await fetchProfile(authSession.user.id);
+  } catch (error) {
+    console.error('Unable to verify profile:', error);
+    // Keep the cached session (if any) so a transient network failure does not sign the user out;
+    // the data layer still enforces access through Row Level Security.
+    return getSession();
+  }
+
+  if (!profile || !profile.is_active) {
+    await supabase.auth.signOut();
+    clearSession();
+    return null;
+  }
+
+  const session = buildSession(profile, authSession.access_token);
+  if (!sameIdentity(getSession(), session)) saveSession(session);
+  return session;
 }
 
-/**
- * Authenticate using demo credentials or valid email/password
- */
-export async function login(
-  email: string,
-  password: string,
-  id?: string
-): Promise<{ success: boolean; session?: AuthSession; error?: string }> {
+/** Called when the profile in the data store changes (e.g. an admin changed this user's role). */
+export function syncSessionWithProfile(profile: Profile | null): void {
+  const cached = getSession();
+  if (!cached || !profile || profile.id !== cached.user.id) return;
+  const next = buildSession(profile, cached.token);
+  if (!sameIdentity(cached, next)) saveSession(next);
+}
+
+let listening = false;
+
+/** Clear local state if Supabase ends the session (token revoked, signed out in another tab...). */
+export function initAuthListener(): void {
+  if (listening) return;
+  listening = true;
+  supabase.auth.onAuthStateChange((event) => {
+    if (event === 'SIGNED_OUT' && getSession()) {
+      stopRealtime();
+      dataStore.reset();
+      clearSession();
+    }
+  });
+}
+
+export async function login(email: string, password: string): Promise<{ success: boolean; session?: AuthSession; error?: string }> {
   const trimmedEmail = email.trim().toLowerCase();
-  const trimmedPass = password.trim();
 
-  if (!trimmedEmail || !trimmedPass) {
+  if (!trimmedEmail || !password) {
     return { success: false, error: 'Please provide both email address and password.' };
   }
 
-  if (trimmedPass.length < 4) {
-    return { success: false, error: 'Password must be at least 4 characters long.' };
-  }
-
-  const { data, error } = await supabase.auth.signInWithPassword({ email: trimmedEmail, password: trimmedPass });
+  const { data, error } = await supabase.auth.signInWithPassword({ email: trimmedEmail, password });
   if (error || !data.user) {
-    return { success: false, error: error?.message || 'Unable to sign in with Supabase.' };
+    return { success: false, error: formatAuthError(error, 'Unable to sign in.') };
   }
 
-  const fullName = `${data.user.user_metadata?.first_name || ''} ${data.user.user_metadata?.last_name || ''}`.trim() || trimmedEmail.split('@')[0].replace(/[._]/g, ' ');
-  const role = resolveRoleFromAccount({
-    id: isAdminPath() ? ADMIN_PATH_UUID : id || data.user.id,
-    email: trimmedEmail,
-    fullName,
-    explicitRole: data.user.user_metadata?.role,
-  });
-  const displayName = fullName.charAt(0).toUpperCase() + fullName.slice(1);
+  let profile: Profile | null = null;
+  try {
+    profile = await fetchProfile(data.user.id);
+  } catch (err) {
+    await supabase.auth.signOut();
+    return { success: false, error: formatAuthError(err, 'Unable to load your profile.') };
+  }
 
-  const session: AuthSession = {
-    user: {
-      id: data.user.id,
-      email: trimmedEmail,
-      fullName: displayName,
-      role,
-    },
-    token: data.session?.access_token || '',
-    createdAt: new Date().toISOString(),
-  };
+  if (!profile) {
+    await supabase.auth.signOut();
+    return { success: false, error: 'Your account has no profile yet. Please contact Royal Square support.' };
+  }
+  if (!profile.is_active) {
+    await supabase.auth.signOut();
+    return { success: false, error: 'This account has been deactivated. Please contact Royal Square support.' };
+  }
 
+  const session = buildSession(profile, data.session?.access_token || '');
   saveSession(session);
   return { success: true, session };
 }
 
 /**
- * Register a new user in demo session storage
+ * Self-service registration. Accounts are always created as clients; the database ignores any role
+ * supplied here. Staff access is granted afterwards by an administrator.
  */
 export async function register(data: {
   fullName: string;
   email: string;
   password: string;
-  role?: 'admin' | 'client' | 'adviser';
-  id?: string;
-  adminUuid?: string;
-}): Promise<{ success: boolean; session?: AuthSession; error?: string }> {
+}): Promise<{ success: boolean; session?: AuthSession; error?: string; needsConfirmation?: boolean }> {
   const trimmedName = data.fullName.trim();
   const trimmedEmail = data.email.trim().toLowerCase();
-  const trimmedPass = data.password.trim();
 
   if (!trimmedName) {
     return { success: false, error: 'Please enter your full legal name.' };
@@ -203,77 +223,57 @@ export async function register(data: {
   if (!trimmedEmail || !trimmedEmail.includes('@')) {
     return { success: false, error: 'Please enter a valid email address.' };
   }
-  if (!trimmedPass || trimmedPass.length < 4) {
-    return { success: false, error: 'Password must be at least 4 characters.' };
+  if (!data.password || data.password.length < MIN_PASSWORD_LENGTH) {
+    return { success: false, error: `Password must be at least ${MIN_PASSWORD_LENGTH} characters.` };
   }
 
+  const [firstName, ...rest] = trimmedName.split(/\s+/);
   const { data: authData, error } = await supabase.auth.signUp({
     email: trimmedEmail,
-    password: trimmedPass,
-    options: {
-      data: {
-        first_name: trimmedName.split(' ')[0],
-        last_name: trimmedName.split(' ').slice(1).join(' '),
-        role: isAdminPath() ? 'admin' : data.role || 'client',
-      },
-    },
+    password: data.password,
+    options: { data: { first_name: firstName, last_name: rest.join(' ') } },
   });
   if (error || !authData.user) {
-    return { success: false, error: formatAuthError(error, 'Unable to register with Supabase.') };
+    return { success: false, error: formatAuthError(error, 'Unable to create your account.') };
   }
 
   if (!authData.session) {
-    return { success: false, error: 'Account created. Confirm your email, then sign in.' };
+    return { success: false, needsConfirmation: true, error: 'Account created. Confirm your email address using the link we sent you, then sign in.' };
   }
 
-  const resolvedRole = resolveRoleFromAccount({
-    id: isAdminPath() ? ADMIN_PATH_UUID : data.id || data.adminUuid || authData.user.id,
-    email: trimmedEmail,
-    fullName: trimmedName,
-    explicitRole: isAdminPath() ? 'admin' : data.role,
-  });
+  let profile: Profile | null = null;
+  try {
+    profile = await fetchProfile(authData.user.id);
+  } catch (err) {
+    return { success: false, error: formatAuthError(err, 'Account created but your profile could not be loaded. Please sign in.') };
+  }
+  if (!profile) {
+    return { success: false, error: 'Account created but your profile is not ready yet. Please sign in again in a moment.' };
+  }
 
-  const session: AuthSession = {
-    user: {
-      id: authData.user.id,
-      email: trimmedEmail,
-      fullName: trimmedName,
-      role: resolvedRole,
-    },
-    token: authData.session?.access_token || '',
-    createdAt: new Date().toISOString(),
-  };
-
+  const session = buildSession(profile, authData.session.access_token);
   saveSession(session);
   return { success: true, session };
 }
 
-/**
- * Log out user: clears session and triggers redirect/auth screen
- */
-export function logout(): void {
-  clearSession();
-  const isLocalhost =
-    typeof window !== 'undefined' &&
-    (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
-  const currentPort = typeof window !== 'undefined' ? window.location.port : '';
-
-  // In standalone apps, reloading resets to the auth screen
-  if (isLocalhost && (currentPort === '5174' || currentPort === '5175')) {
-    window.location.reload();
-  } else {
-    window.dispatchEvent(new CustomEvent('royal-square-auth-change', { detail: { session: null } }));
+export async function logout(): Promise<void> {
+  stopRealtime();
+  try {
+    await supabase.auth.signOut();
+  } catch (error) {
+    console.error('Sign out failed:', error);
   }
+  dataStore.reset();
+  clearSession();
 }
 
 /**
  * Shared HTML renderer for Login / Register Screen
  */
 export function renderSharedAuthScreen(options: { mode?: 'login' | 'register' } = {}): string {
-  const mode = options.mode || 'login';
-  const isLogin = mode === 'login';
   const adminPath = isAdminPath();
-  const adminGateActive = adminPath && !isAdminGateUnlocked();
+  // Staff accounts are provisioned by an administrator, so the staff sign-in never offers registration.
+  const isLogin = adminPath || (options.mode || 'login') === 'login';
 
   return `
     <div id="royal-square-auth-root" class="min-h-screen bg-[#0A192F] text-white flex flex-col justify-between p-4 sm:p-6 relative overflow-hidden font-sans">
@@ -315,7 +315,13 @@ export function renderSharedAuthScreen(options: { mode?: 'login' | 'register' } 
           ` : ''}
           
           <!-- Mode Tabs (Sign In vs Create Account) -->
-          <div class="${adminGateActive ? 'hidden' : 'grid grid-cols-2'} p-1 bg-white/5 rounded-xl border border-white/10 text-xs font-semibold">
+          ${adminPath ? `
+          <div class="text-center">
+            <h2 class="text-sm font-bold text-white">Royal Desk staff sign-in</h2>
+            <p class="text-[11px] text-slate-400 mt-1">For advisers and administrators. Accounts are created by an administrator.</p>
+          </div>
+          ` : ''}
+          <div class="${adminPath ? 'hidden' : 'grid grid-cols-2'} p-1 bg-white/5 rounded-xl border border-white/10 text-xs font-semibold">
             <button
               id="tab-auth-login"
               class="py-2 rounded-lg transition-all ${
@@ -343,32 +349,7 @@ export function renderSharedAuthScreen(options: { mode?: 'login' | 'register' } 
           </div>
 
           ${
-            adminGateActive
-              ? `
-            <form id="auth-admin-form" class="space-y-3.5">
-              <div>
-                <label for="auth-admin-password" class="text-[11px] font-semibold text-slate-300 block mb-1">Admin Password</label>
-                <input
-                  id="auth-admin-password"
-                  type="password"
-                  required
-                  autofocus
-                  placeholder="Enter admin password"
-                  class="w-full text-xs p-3 bg-white/5 border border-white/15 rounded-xl text-white placeholder-slate-500 focus:outline-hidden focus:border-amber-400 transition-colors font-mono"
-                />
-              </div>
-
-              <button
-                type="submit"
-                id="auth-admin-submit-btn"
-                class="w-full py-3 bg-amber-400 hover:bg-amber-300 text-slate-950 font-bold rounded-xl text-xs transition-all shadow-md mt-1 cursor-pointer flex items-center justify-center space-x-1.5"
-              >
-                <span>Enter Royal Desk</span>
-                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3"></path></svg>
-              </button>
-            </form>
-          `
-              : isLogin
+            isLogin
               ? `
             <!-- Login Form -->
             <form id="auth-login-form" class="space-y-3.5">
@@ -438,7 +419,9 @@ export function renderSharedAuthScreen(options: { mode?: 'login' | 'register' } 
                   id="auth-reg-password"
                   type="password"
                   required
-                  placeholder="At least 4 characters"
+                  minlength="${MIN_PASSWORD_LENGTH}"
+                  autocomplete="new-password"
+                  placeholder="At least ${MIN_PASSWORD_LENGTH} characters"
                   class="w-full text-xs p-3 bg-white/5 border border-white/15 rounded-xl text-white placeholder-slate-500 focus:outline-hidden focus:border-amber-400 transition-colors"
                 />
               </div>
@@ -500,38 +483,41 @@ export function attachSharedAuthEvents(
     options.onBack?.();
   });
 
-  const adminForm = container.querySelector('#auth-admin-form') as HTMLFormElement | null;
-  adminForm?.addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const passwordInput = container.querySelector('#auth-admin-password') as HTMLInputElement | null;
-    if (!passwordInput) return;
-
-    if (unlockAdminGate(passwordInput.value)) {
-      options.onModeChange('login');
-    } else {
-      showError('Incorrect admin password.');
+  // Disable the submit button while a request is in flight so credentials are not submitted twice.
+  const withBusy = async (form: HTMLFormElement, work: () => Promise<void>) => {
+    const button = form.querySelector('button[type="submit"]') as HTMLButtonElement | null;
+    if (button) button.disabled = true;
+    errorBox?.classList.add('hidden');
+    try {
+      await work();
+    } catch (error) {
+      showError(error instanceof Error ? error.message : 'Something went wrong. Please try again.');
+    } finally {
+      if (button && button.isConnected) button.disabled = false;
     }
-  });
+  };
 
   // Login form submit
   const loginForm = container.querySelector('#auth-login-form') as HTMLFormElement | null;
-  loginForm?.addEventListener('submit', async (e) => {
+  loginForm?.addEventListener('submit', (e) => {
     e.preventDefault();
     const emailInput = container.querySelector('#auth-input-email') as HTMLInputElement | null;
     const passInput = container.querySelector('#auth-input-password') as HTMLInputElement | null;
     if (!emailInput || !passInput) return;
 
-    const res = await login(emailInput.value, passInput.value);
-    if (res.success && res.session) {
-      options.onSuccess(res.session);
-    } else if (res.error) {
-      showError(res.error);
-    }
+    void withBusy(loginForm, async () => {
+      const res = await login(emailInput.value, passInput.value);
+      if (res.success && res.session) {
+        options.onSuccess(res.session);
+      } else if (res.error) {
+        showError(res.error);
+      }
+    });
   });
 
   // Register form submit
   const regForm = container.querySelector('#auth-register-form') as HTMLFormElement | null;
-  regForm?.addEventListener('submit', async (e) => {
+  regForm?.addEventListener('submit', (e) => {
     e.preventDefault();
     const nameInput = container.querySelector('#auth-reg-name') as HTMLInputElement | null;
     const emailInput = container.querySelector('#auth-reg-email') as HTMLInputElement | null;
@@ -539,16 +525,18 @@ export function attachSharedAuthEvents(
 
     if (!nameInput || !emailInput || !passInput) return;
 
-    const res = await register({
-      fullName: nameInput.value,
-      email: emailInput.value,
-      password: passInput.value,
-    });
+    void withBusy(regForm, async () => {
+      const res = await register({
+        fullName: nameInput.value,
+        email: emailInput.value,
+        password: passInput.value,
+      });
 
-    if (res.success && res.session) {
-      options.onSuccess(res.session);
-    } else if (res.error) {
-      showError(res.error);
-    }
+      if (res.success && res.session) {
+        options.onSuccess(res.session);
+      } else if (res.error) {
+        showError(res.error);
+      }
+    });
   });
 }

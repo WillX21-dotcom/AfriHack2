@@ -28,7 +28,9 @@ export interface Claim {
   hire_car_provider: string | null;
   hire_car_start: string | null;
   hire_car_end: string | null;
+  repairer_name: string | null;
   closed_at: string | null;
+  provider_name?: string;
   metadata: Record<string, any>;
   created_at: string;
   updated_at: string;

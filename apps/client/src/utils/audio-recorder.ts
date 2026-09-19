@@ -40,7 +40,9 @@ export class SimpleAudioRecorder {
       }
 
       this.mediaRecorder.onstop = () => {
-        const audioBlob = new Blob(this.audioChunks, { type: 'audio/webm' });
+        // Use what the browser actually recorded (Safari produces mp4), without codec parameters.
+        const mime = (this.mediaRecorder?.mimeType || 'audio/webm').split(';')[0];
+        const audioBlob = new Blob(this.audioChunks, { type: mime });
         const audioUrl = URL.createObjectURL(audioBlob);
         const durationMs = Date.now() - this.startTime;
         resolve({
