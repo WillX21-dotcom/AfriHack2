@@ -1,0 +1,16 @@
+{
+  "name": "Royal Square Financial",
+  "short_name": "Royal Square",
+  "description": "South African wealth management, insurance policy tracking, and instant motor loss claim reporting.",
+  "start_url": "/client",
+  "display": "standalone",
+  "background_color": "#0A192F",
+  "theme_color": "#0A192F",
+  "icons": [
+    {
+      "src": "/favicon.ico",
+      "sizes": "64x64 32x32 24x24 16x16",
+      "type": "image/x-icon"
+    }
+  ]
+}

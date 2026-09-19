@@ -1,0 +1,6 @@
+{
+  "name": "Royal Square Financial",
+  "description": "Unified financial services portal and adviser dashboard with motor claims, request workflows, and client portfolio management.",
+  "requestFramePermissions": ["camera", "geolocation", "microphone"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
