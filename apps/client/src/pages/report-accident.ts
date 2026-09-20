@@ -1,5 +1,6 @@
 import { html, type SafeHtml } from '@shared/index';
 import { financialService } from '../services/financial';
+import { icon } from '../components/icons';
 
 /**
  * The accident form survives re-renders (the app refreshes whenever the database reports a change),
@@ -49,64 +50,73 @@ export function renderReportAccidentPage(isRecording: boolean): SafeHtml {
 
   const field = (id: string, label: string, placeholder = '', type = 'text') => html`
     <div>
-      <label for="${id}" class="text-[11px] font-semibold text-slate-600 block mb-1">${label}</label>
-      <input id="${id}" type="${type}" placeholder="${placeholder}" value="${v(id)}" class="w-full text-xs p-2.5 bg-slate-50 border border-slate-200 rounded-xl" />
+      <label for="${id}" class="rsc-label">${label}</label>
+      <input id="${id}" type="${type}" placeholder="${placeholder}" value="${v(id)}" class="rsc-input" />
     </div>`;
 
+  const step = (n: number, title: string, hint?: string) => html`
+    <div class="mb-3">
+      <p class="rsc-eyebrow">Step ${n} of 4</p>
+      <h3 class="text-[15px] font-semibold text-slate-900 mt-0.5">${title}</h3>
+      ${hint ? html`<p class="rsc-muted mt-1">${hint}</p>` : ''}
+    </div>`;
+
+  const voiceLabel = isRecording
+    ? 'Recording. Tap to stop'
+    : draft.voiceNote
+    ? `Voice note saved (${Math.max(1, Math.round(draft.voiceNote.durationMs / 1000))}s). Tap to re-record`
+    : 'Record a voice statement';
+  const voiceTone = isRecording ? '!border-red-300 !bg-red-50 !text-red-700' : draft.voiceNote ? '!border-emerald-300 !bg-emerald-50 !text-emerald-800' : '';
+
   return html`
-    <div class="space-y-4 pb-28">
-      <div class="bg-red-50 border border-red-200 rounded-2xl p-4 text-red-900 shadow-xs">
-        <h3 class="text-xs font-bold uppercase tracking-wide">⚠️ Safety first</h3>
-        <p class="text-xs text-red-800/90 mt-1 leading-relaxed">
-          If anyone is injured, dial <strong>10177</strong> or <strong>112</strong> straight away. Switch on your hazard lights, place your warning triangle about 45 m behind the vehicle and stay somewhere safe.
-        </p>
-        <a href="tel:112" class="inline-block mt-2 px-3 py-1 bg-red-600 text-white rounded-lg text-xs font-bold shadow-xs">Call 112</a>
+    <div class="space-y-4 pb-4">
+      <div class="rsc-notice rsc-notice-danger">
+        <span class="shrink-0 mt-0.5">${icon('alert', 'w-5 h-5', 2)}</span>
+        <div>
+          <p class="font-semibold">Safety first</p>
+          <p class="mt-0.5">If anyone is injured, dial <strong>10177</strong> or <strong>112</strong> straight away. Switch on your hazard lights, place your warning triangle about 45 m behind the vehicle and stay somewhere safe.</p>
+          <a href="tel:112" class="rsc-btn rsc-btn-danger rsc-btn-sm mt-2.5">${icon('phone', 'w-4 h-4', 2)}Call 112</a>
+        </div>
       </div>
 
-      <form id="accident-form" class="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs space-y-4" novalidate>
-        <div>
-          <span class="text-[10px] font-bold text-amber-600 uppercase tracking-wider">Step 1 of 4</span>
-          <h2 class="text-sm font-bold text-slate-900">What happened and where</h2>
-        </div>
-
-        <div>
-          <label for="acc-date-input" class="text-xs font-semibold text-slate-700 block mb-1">Date and approximate time</label>
-          <input id="acc-date-input" type="datetime-local" max="${localDateTimeValue()}" value="${v('acc-date-input', localDateTimeValue())}" class="w-full text-xs p-3 bg-slate-50 border border-slate-200 rounded-xl" />
-        </div>
-
-        <div>
-          <div class="flex justify-between items-center mb-1">
-            <label for="acc-location-input" class="text-xs font-semibold text-slate-700">Location or intersection</label>
-            <button id="detect-gps-btn" type="button" class="text-[11px] text-amber-700 font-bold hover:underline">📍 Use my location</button>
+      <form id="accident-form" class="rsc-card p-4 space-y-6" novalidate>
+        <section>
+          ${step(1, 'What happened and where')}
+          <div class="space-y-3.5">
+            <div>
+              <label for="acc-date-input" class="rsc-label">Date and approximate time</label>
+              <input id="acc-date-input" type="datetime-local" max="${localDateTimeValue()}" value="${v('acc-date-input', localDateTimeValue())}" class="rsc-input" />
+            </div>
+            <div>
+              <div class="flex justify-between items-baseline mb-[5px]">
+                <label for="acc-location-input" class="text-xs font-semibold text-slate-700">Location or intersection</label>
+                <button id="detect-gps-btn" type="button" class="rsc-link !text-xs">Use my location</button>
+              </div>
+              <input id="acc-location-input" type="text" required placeholder="Street and suburb" value="${v('acc-location-input')}" class="rsc-input" />
+            </div>
+            <div>
+              <label for="acc-vehicle-input" class="rsc-label">Your vehicle</label>
+              <input id="acc-vehicle-input" list="insured-vehicles" type="text" placeholder="Make, model and registration" value="${v('acc-vehicle-input')}" class="rsc-input" />
+              <datalist id="insured-vehicles">${vehicles.map((a) => html`<option value="${a.name}"></option>`)}</datalist>
+            </div>
+            <div>
+              <label for="acc-desc-input" class="rsc-label">What happened and what is damaged</label>
+              <textarea id="acc-desc-input" required rows="3" placeholder="Describe the impact, road and weather conditions and the visible damage." class="rsc-input">${v('acc-desc-input')}</textarea>
+            </div>
           </div>
-          <input id="acc-location-input" type="text" required placeholder="Street and suburb" value="${v('acc-location-input')}" class="w-full text-xs p-3 bg-slate-50 border border-slate-200 rounded-xl" />
-        </div>
+        </section>
 
-        <div>
-          <label for="acc-vehicle-input" class="text-xs font-semibold text-slate-700 block mb-1">Your vehicle</label>
-          <input id="acc-vehicle-input" list="insured-vehicles" type="text" placeholder="Make, model and registration" value="${v('acc-vehicle-input')}" class="w-full text-xs p-3 bg-slate-50 border border-slate-200 rounded-xl" />
-          <datalist id="insured-vehicles">${vehicles.map((a) => html`<option value="${a.name}"></option>`)}</datalist>
-        </div>
-
-        <div>
-          <label for="acc-desc-input" class="text-xs font-semibold text-slate-700 block mb-1">What happened and what is damaged</label>
-          <textarea id="acc-desc-input" required rows="3" placeholder="Describe the impact, road and weather conditions and the visible damage." class="w-full text-xs p-3 bg-slate-50 border border-slate-200 rounded-xl leading-relaxed">${v('acc-desc-input')}</textarea>
-        </div>
-
-        <div class="border-t border-slate-100 pt-4">
-          <span class="text-[10px] font-bold text-amber-600 uppercase tracking-wider">Step 2 of 4</span>
-          <h2 class="text-sm font-bold text-slate-900">Police report</h2>
-          <p class="text-xs text-slate-500">Accidents must be reported to SAPS within 24 hours. Add the case number now or send it to your adviser later.</p>
-          <div class="grid grid-cols-2 gap-2 mt-2">
-            ${field('acc-police-cas-input', 'SAPS case number (CAS)', 'CAS 123/09/2026')}
+        <section class="pt-6 rsc-divider">
+          ${step(2, 'Police report', 'Accidents must be reported to SAPS within 24 hours. Add the case number now or send it to your adviser later.')}
+          <div class="grid grid-cols-2 gap-3">
+            ${field('acc-police-cas-input', 'SAPS case number', 'CAS 123/09/2026')}
             ${field('acc-police-station-input', 'Police station', '')}
           </div>
-        </div>
+        </section>
 
-        <div class="border-t border-slate-100 pt-4">
-          <span class="text-[10px] font-bold text-amber-600 uppercase tracking-wider">Step 3 of 4</span>
-          <h2 class="text-sm font-bold text-slate-900">Other driver and witnesses</h2>
-          <div class="grid grid-cols-2 gap-2 mt-2">
+        <section class="pt-6 rsc-divider">
+          ${step(3, 'Other driver and witnesses', 'Optional. Fill in whatever you have.')}
+          <div class="grid grid-cols-2 gap-3">
             ${field('tp-reg-input', 'Other vehicle registration')}
             ${field('tp-make-input', 'Make and model')}
             ${field('tp-name-input', 'Driver name')}
@@ -114,41 +124,30 @@ export function renderReportAccidentPage(isRecording: boolean): SafeHtml {
             ${field('wit-name-input', 'Witness name')}
             ${field('wit-phone-input', 'Witness phone', '', 'tel')}
           </div>
-        </div>
+        </section>
 
-        <div class="border-t border-slate-100 pt-4">
-          <span class="text-[10px] font-bold text-amber-600 uppercase tracking-wider">Step 4 of 4</span>
-          <h2 class="text-sm font-bold text-slate-900">Photos and voice statement</h2>
-          <p class="text-xs text-slate-500">Optional, but photos of all vehicles and the scene speed up your claim.</p>
-
-          <div class="grid grid-cols-2 gap-2 mt-3">
-            <button id="trigger-camera-btn" type="button" class="p-3 border-2 border-dashed border-amber-300 hover:border-amber-500 rounded-xl bg-amber-50/50 flex flex-col items-center text-amber-900">
-              <span class="text-lg">📷</span><span class="text-xs font-bold mt-1">Take photo</span>
-            </button>
-            <label class="p-3 border-2 border-dashed border-amber-300 hover:border-amber-500 rounded-xl bg-amber-50/50 flex flex-col items-center text-amber-900 cursor-pointer">
-              <span class="text-lg">🖼️</span><span class="text-xs font-bold mt-1">Choose photos</span>
-              <input id="photo-file-input" type="file" accept="image/*" multiple class="hidden" />
-            </label>
+        <section class="pt-6 rsc-divider">
+          ${step(4, 'Photos and voice statement', 'Optional, but photos of all vehicles and the scene speed up your claim.')}
+          <div class="grid grid-cols-2 gap-2.5">
+            <button id="trigger-camera-btn" type="button" class="rsc-btn rsc-btn-secondary">${icon('camera', 'w-[18px] h-[18px]', 2)}Take photo</button>
+            <label class="rsc-btn rsc-btn-secondary">${icon('photo', 'w-[18px] h-[18px]', 2)}Choose photos<input id="photo-file-input" type="file" accept="image/*" multiple class="hidden" /></label>
           </div>
 
-          <button id="trigger-mic-btn" type="button" class="mt-2 w-full p-3 border-2 border-dashed rounded-xl flex items-center justify-center space-x-2 ${isRecording ? 'border-red-500 bg-red-50 text-red-700' : draft.voiceNote ? 'border-emerald-500 bg-emerald-50 text-emerald-800' : 'border-slate-200 bg-slate-50 text-slate-700'}">
-            <span class="text-lg">🎙️</span>
-            <span class="text-xs font-bold">${isRecording ? '🔴 Recording, tap to stop' : draft.voiceNote ? `Voice note saved (${Math.max(1, Math.round(draft.voiceNote.durationMs / 1000))}s), tap to re-record` : 'Record a voice statement'}</span>
+          <button id="trigger-mic-btn" type="button" class="rsc-btn rsc-btn-secondary rsc-btn-block mt-2.5 ${voiceTone}">
+            ${isRecording ? html`<span class="w-2 h-2 rounded-full bg-red-600 animate-pulse" aria-hidden="true"></span>` : icon('mic', 'w-[18px] h-[18px]', 2)}${voiceLabel}
           </button>
 
           ${draft.photos.length > 0
             ? html`<div class="flex gap-2 mt-3 overflow-x-auto py-1">
                 ${draft.photos.map((p, i) => html`<div class="relative shrink-0">
-                  <img src="${p.url}" alt="Accident photo ${i + 1}" class="w-16 h-16 rounded-xl object-cover border border-slate-300" />
-                  <button type="button" data-action="remove-photo" data-index="${i}" aria-label="Remove photo ${i + 1}" class="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-slate-900 text-white text-[10px] leading-none">✕</button>
+                  <img src="${p.url}" alt="Accident photo ${i + 1}" class="w-16 h-16 rounded-[10px] object-cover border border-slate-200" />
+                  <button type="button" data-action="remove-photo" data-index="${i}" aria-label="Remove photo ${i + 1}" class="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-slate-900 text-white flex items-center justify-center">${icon('close', 'w-3 h-3', 3)}</button>
                 </div>`)}
               </div>`
             : ''}
-        </div>
+        </section>
 
-        <button id="submit-accident-claim-btn" type="submit" class="w-full py-3.5 bg-gradient-to-r from-red-600 to-amber-600 hover:from-red-700 hover:to-amber-700 disabled:opacity-60 text-white font-bold rounded-xl text-xs transition-all shadow-md">
-          Submit claim to Royal Square
-        </button>
+        <button id="submit-accident-claim-btn" type="submit" class="rsc-btn rsc-btn-primary rsc-btn-block">Submit claim to Royal Square</button>
       </form>
     </div>
   `;

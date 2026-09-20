@@ -10,7 +10,7 @@ import { Goal } from '../../shared/src/types/goal';
 import { Request } from '../../shared/src/types/request';
 import { RequestWorkflow } from '../../shared/src/types/workflow';
 import { Claim, ClaimTimeline, ClaimVehicle, ClaimWitness } from '../../shared/src/types/claim';
-import { DocumentRecord } from '../../shared/src/types/document';
+import { DocumentEvent, DocumentRecord } from '../../shared/src/types/document';
 import { Task } from '../../shared/src/types/task';
 import { Reminder } from '../../shared/src/types/reminder';
 import { Notification } from '../../shared/src/types/notification';
@@ -37,6 +37,7 @@ export interface Database {
       claim_witnesses: { Row: ClaimWitness; Insert: Partial<ClaimWitness>; Update: Partial<ClaimWitness> };
       claim_vehicles: { Row: ClaimVehicle; Insert: Partial<ClaimVehicle>; Update: Partial<ClaimVehicle> };
       documents: { Row: DocumentRecord; Insert: Partial<DocumentRecord>; Update: Partial<DocumentRecord> };
+      document_events: { Row: DocumentEvent; Insert: Partial<DocumentEvent>; Update: Partial<DocumentEvent> };
       tasks: { Row: Task; Insert: Partial<Task>; Update: Partial<Task> };
       reminders: { Row: Reminder; Insert: Partial<Reminder>; Update: Partial<Reminder> };
       notifications: { Row: Notification; Insert: Partial<Notification>; Update: Partial<Notification> };

@@ -1,5 +1,6 @@
 import { html, type SafeHtml } from '@shared/index';
 import type { RequestWorkflow } from '@shared/types/workflow';
+import { icon } from './icons';
 
 export function renderWorkflowStepper(workflows: RequestWorkflow[]): SafeHtml {
   if (!workflows || workflows.length === 0) return html``;
@@ -7,24 +8,17 @@ export function renderWorkflowStepper(workflows: RequestWorkflow[]): SafeHtml {
   const sorted = [...workflows].sort((a, b) => a.step_number - b.step_number);
 
   return html`
-    <div class="py-3">
-      <div class="relative flex items-center justify-between">
-        <div class="absolute top-1/2 left-4 right-4 -translate-y-1/2 h-0.5 bg-slate-200 -z-0"></div>
-        ${sorted.map((step) => {
-          const isDone = step.status === 'completed';
-          const isCurrent = step.status === 'in_progress';
-          const circle = isDone
-            ? 'bg-emerald-600 text-white border-emerald-600 ring-4 ring-emerald-100'
-            : isCurrent
-            ? 'bg-[#0A192F] text-amber-300 border-[#0A192F] ring-4 ring-amber-100 animate-pulse'
-            : 'bg-white text-slate-400 border-slate-300';
-          return html`
-            <div class="relative z-10 flex flex-col items-center">
-              <div class="w-8 h-8 rounded-full border-2 flex items-center justify-center text-xs font-bold ${circle}">${isDone ? '✓' : step.step_number}</div>
-              <span class="mt-2 text-[11px] font-medium text-slate-700 max-w-[70px] text-center leading-tight">${step.step_name}</span>
-            </div>`;
-        })}
-      </div>
-    </div>
+    <ol class="grid gap-2 mt-3" style="grid-template-columns: repeat(${sorted.length}, minmax(0, 1fr))">
+      ${sorted.map((step) => {
+        const done = step.status === 'completed';
+        const current = step.status === 'in_progress';
+        const dot = done ? 'bg-[#0A192F] text-white' : current ? 'bg-white text-[#0A192F] border-2 border-[#0A192F]' : 'bg-white text-slate-400 border border-slate-300';
+        return html`
+          <li class="flex flex-col items-center text-center gap-1.5">
+            <span class="w-7 h-7 rounded-full flex items-center justify-center text-xs font-semibold ${dot}">${done ? icon('check', 'w-3.5 h-3.5', 3) : step.step_number}</span>
+            <span class="text-[11px] leading-tight ${current ? 'font-semibold text-slate-900' : done ? 'font-medium text-slate-700' : 'text-slate-400'}">${step.step_name}</span>
+          </li>`;
+      })}
+    </ol>
   `;
 }

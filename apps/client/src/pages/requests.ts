@@ -3,18 +3,19 @@ import { REQUEST_TYPE_LABELS, type RequestType } from '@shared/constants/request
 import { requestService } from '../services/request';
 import { renderStatusBadge } from '../components/status-badge';
 import { renderEmptyState } from '../components/empty-state';
+import { icon } from '../components/icons';
 
 export function renderRequestsPage(): SafeHtml {
   const requests = requestService.getRequests();
 
   return html`
-    <div class="space-y-4 pb-24">
-      <div class="flex items-center justify-between">
+    <div class="space-y-5 pb-4">
+      <div class="flex items-start justify-between gap-3">
         <div>
-          <h2 class="text-base font-bold text-slate-900">Service requests</h2>
-          <p class="text-xs text-slate-500">Track each request as your adviser works through it</p>
+          <h2 class="rsc-title">Service requests</h2>
+          <p class="rsc-subtitle mt-0.5">Track each request as your adviser works through it</p>
         </div>
-        <button data-nav="create-request" class="px-3 py-1.5 bg-[#0A192F] text-amber-300 text-xs font-semibold rounded-xl hover:bg-slate-800 transition-colors shadow-xs">+ New request</button>
+        <button data-nav="create-request" class="rsc-btn rsc-btn-primary rsc-btn-sm shrink-0">${icon('plus', 'w-4 h-4', 2.25)}New request</button>
       </div>
 
       ${requests.length === 0
@@ -22,18 +23,18 @@ export function renderRequestsPage(): SafeHtml {
         : html`<div class="space-y-3">
             ${requests.map((req) => {
               const label = REQUEST_TYPE_LABELS[req.request_type as RequestType] || req.request_type;
-              return html`<div data-nav="request-detail" data-id="${req.id}" class="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-xs hover:border-amber-300 transition-all cursor-pointer">
-                <div class="flex items-start justify-between mb-2 gap-2">
-                  <span class="text-[10px] font-bold text-amber-600 uppercase tracking-wider">${label}</span>
-                  ${renderStatusBadge(req.status)}
+              return html`<button data-nav="request-detail" data-id="${req.id}" class="rsc-card rsc-card-link p-4 block">
+                <div class="flex items-start justify-between gap-3">
+                  <p class="rsc-eyebrow !normal-case !tracking-normal !text-[12px]">${label}</p>
+                  ${renderStatusBadge(req.status, 'request')}
                 </div>
-                <h3 class="text-xs font-bold text-slate-800 leading-snug">${req.title}</h3>
-                ${req.description ? html`<p class="text-xs text-slate-500 line-clamp-2 mt-1">${req.description}</p>` : ''}
-                <div class="flex items-center justify-between text-[11px] text-slate-400 mt-3 pt-2.5 border-t border-slate-100">
-                  <span class="font-mono text-slate-600 font-semibold">${req.request_number}</span>
-                  <span>Submitted ${formatDate(req.created_at)}</span>
+                <h3 class="rsc-heading mt-1.5">${req.title}</h3>
+                ${req.description ? html`<p class="rsc-muted mt-1 line-clamp-2">${req.description}</p>` : ''}
+                <div class="flex items-center justify-between mt-3 pt-3 rsc-divider">
+                  <span class="rsc-ref">${req.request_number}</span>
+                  <span class="rsc-muted">Submitted ${formatDate(req.created_at)}</span>
                 </div>
-              </div>`;
+              </button>`;
             })}
           </div>`}
     </div>

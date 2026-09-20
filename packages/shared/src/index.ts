@@ -4,6 +4,7 @@ export * from './constants/statuses';
 export * from './constants/request-types';
 export * from './constants/claim-types';
 export * from './constants/notification-types';
+export * from './constants/document-status';
 
 // Export Types
 export * from './types/user';
@@ -36,6 +37,9 @@ export * from './validators/request';
 export * from './validators/claim';
 export * from './validators/financial';
 
+
+// Export Rules
+export * from './rules/documentRules';
 
 // Export Helpers
 export * from './html';

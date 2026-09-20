@@ -29,5 +29,5 @@
     "noEmit": true
   },
   "include": ["src", "apps", "packages"],
-  "exclude": ["node_modules", "dist", "supabase/functions"]
+  "exclude": ["node_modules", "dist", "supabase/functions", "**/*.test.ts"]
 }

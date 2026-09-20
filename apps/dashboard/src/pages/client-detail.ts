@@ -2,6 +2,8 @@ import { html, type SafeHtml } from '@shared/html';
 import { formatDate, formatDateTime, formatZAR, fullName, initials, titleCase, maskIdNumber, relativeTime, monthlyAmount } from '@shared/format';
 import { adviserService } from '../services/adviser';
 import { renderDashboardStatusBadge } from '../components/status-badge';
+import { documentStatusBadgeClass, documentStatusLabel, isOcrEligible } from '@shared/index';
+import type { DocumentRecord } from '@shared/types/document';
 import { INPUT_CLASS, notFound, recordSection } from '../components/ui';
 
 export const DOCUMENT_TYPE_OPTIONS: Array<[string, string]> = [
@@ -23,7 +25,7 @@ function labelledInput(id: string, label: string, value: string | null | undefin
   return html`<label class="block"><span class="text-[11px] font-semibold text-slate-600 block mb-1">${label}</span><input id="${id}" name="${id}" type="${type}" value="${value ?? ''}" class="${INPUT_CLASS}" /></label>`;
 }
 
-export function renderDocumentRow(doc: { id: string; name: string; document_type: string; is_verified: boolean; created_at: string }): SafeHtml {
+export function renderDocumentRow(doc: Pick<DocumentRecord, 'id' | 'name' | 'document_type' | 'is_verified' | 'created_at' | 'processing_status' | 'escalated_at'>): SafeHtml {
   return html`
     <div class="p-2.5 bg-slate-50 rounded-xl text-xs flex flex-wrap items-center justify-between gap-2">
       <div class="min-w-0">
@@ -31,9 +33,11 @@ export function renderDocumentRow(doc: { id: string; name: string; document_type
         <span class="text-[10px] text-slate-400">${titleCase(doc.document_type)} · ${formatDate(doc.created_at)}</span>
       </div>
       <div class="flex items-center gap-1.5 shrink-0">
-        ${doc.is_verified ? html`<span class="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full">✓ Verified</span>` : ''}
+        <span class="${documentStatusBadgeClass(doc)}">${documentStatusLabel(doc)}</span>
+        ${doc.escalated_at ? html`<span class="text-[10px] font-bold text-rose-700 bg-rose-50 px-2 py-0.5 rounded-full">Escalated</span>` : ''}
         <button data-action="open-doc" data-id="${doc.id}" class="px-2 py-1 bg-white border border-slate-200 rounded-lg text-[11px] font-semibold text-slate-700 hover:bg-slate-100">Open</button>
-        <button data-action="verify-doc" data-id="${doc.id}" data-verified="${doc.is_verified ? 'false' : 'true'}" class="px-2 py-1 rounded-lg text-[11px] font-semibold ${doc.is_verified ? 'text-slate-500 hover:bg-slate-100' : 'bg-emerald-600 text-white hover:bg-emerald-700'}">${doc.is_verified ? 'Unverify' : 'Verify'}</button>
+        <button data-action="review-doc" data-id="${doc.id}" class="px-2 py-1 rounded-lg text-[11px] font-semibold ${doc.processing_status === 'under_review' ? 'bg-amber-500 text-white hover:bg-amber-600' : 'bg-white border border-slate-200 text-slate-700 hover:bg-slate-100'}">Review</button>
+        ${isOcrEligible(doc.document_type) ? '' : html`<button data-action="verify-doc" data-id="${doc.id}" data-verified="${doc.is_verified ? 'false' : 'true'}" class="px-2 py-1 rounded-lg text-[11px] font-semibold ${doc.is_verified ? 'text-slate-500 hover:bg-slate-100' : 'bg-emerald-600 text-white hover:bg-emerald-700'}">${doc.is_verified ? 'Unverify' : 'Verify'}</button>`}
       </div>
     </div>
   `;

@@ -12,6 +12,24 @@ export type DocumentType =
   | 'compliance_document'
   | 'other';
 
+export type DocumentProcessingStatus =
+  | 'pending'
+  | 'processing'
+  | 'auto_completed'
+  | 'under_review'
+  | 'successful'
+  | 'rejected';
+
+export interface DocumentEvent {
+  id: string;
+  document_id: string;
+  client_id: string;
+  event_type: string;
+  payload: Record<string, any>;
+  actor: string | null;
+  created_at: string;
+}
+
 export interface DocumentRecord {
   id: string;
   client_id: string;
@@ -26,6 +44,14 @@ export interface DocumentRecord {
   is_verified: boolean;
   verified_by: string | null;
   verified_at: string | null;
+  processing_status: DocumentProcessingStatus;
+  confidence_score: number | null;
+  extracted_fields: Record<string, any>;
+  human_review_required: boolean;
+  rejection_reason: string | null;
+  reupload_count: number;
+  escalated_at: string | null;
+  last_processed_at: string | null;
   metadata: Record<string, any>;
   created_at: string;
   updated_at: string;

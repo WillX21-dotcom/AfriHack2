@@ -71,6 +71,7 @@ $$;
 -- ---------------------------------------------------------------------------------------------
 -- Client: report a motor accident
 -- ---------------------------------------------------------------------------------------------
+drop function if exists public.create_motor_claim(timestamptz, text, text, uuid);
 drop function if exists public.create_motor_claim(timestamptz, text, text, text, text, uuid);
 
 create or replace function public.create_motor_claim(

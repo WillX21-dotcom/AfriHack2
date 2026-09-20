@@ -1,5 +1,6 @@
 import { formatDate, formatZAR, html, titleCase, type SafeHtml } from '@shared/index';
 import { financialService } from '../services/financial';
+import { icon } from '../components/icons';
 
 const GOAL_TYPES = ['retirement', 'property', 'vehicle', 'education', 'emergency_fund', 'travel', 'investment', 'business', 'other'];
 
@@ -7,75 +8,73 @@ export function renderGoalsPage(): SafeHtml {
   const { goals } = financialService.getSummary();
 
   return html`
-    <div class="space-y-4 pb-24">
-      <div class="flex items-center justify-between">
+    <div class="space-y-5 pb-4">
+      <div class="flex items-start justify-between gap-3">
         <div>
-          <h2 class="text-base font-bold text-slate-900">Life goals and milestones</h2>
-          <p class="text-xs text-slate-500">Your adviser can see these and plan around them</p>
+          <h2 class="rsc-title">Goals</h2>
+          <p class="rsc-subtitle mt-0.5">Your adviser can see these and plan around them</p>
         </div>
-        <button id="open-add-goal-btn" class="px-3 py-1.5 bg-[#0A192F] text-amber-300 text-xs font-semibold rounded-xl hover:bg-slate-800 transition-colors shadow-xs">+ New goal</button>
+        <button id="open-add-goal-btn" class="rsc-btn rsc-btn-primary rsc-btn-sm shrink-0">${icon('plus', 'w-4 h-4', 2.25)}New goal</button>
       </div>
 
-      <form id="add-goal-form" class="hidden bg-white p-4 rounded-2xl border border-amber-300 shadow-md space-y-2.5">
-        <h3 class="text-xs font-bold text-slate-900 uppercase tracking-wide">Create a financial goal</h3>
+      <form id="add-goal-form" class="hidden rsc-card p-4 space-y-3">
+        <h3 class="rsc-heading">Create a financial goal</h3>
         <div>
-          <label class="text-[11px] font-semibold text-slate-600 block mb-1" for="goal-name-input">Goal name</label>
-          <input id="goal-name-input" required type="text" placeholder="e.g. Coastal holiday home" class="w-full text-xs p-2.5 bg-slate-50 border border-slate-200 rounded-xl" />
+          <label class="rsc-label" for="goal-name-input">Goal name</label>
+          <input id="goal-name-input" required type="text" placeholder="e.g. Coastal holiday home" class="rsc-input" />
         </div>
-        <div class="grid grid-cols-2 gap-2">
+        <div class="grid grid-cols-2 gap-3">
           <div>
-            <label class="text-[11px] font-semibold text-slate-600 block mb-1" for="goal-type-input">Type</label>
-            <select id="goal-type-input" class="w-full text-xs p-2.5 bg-slate-50 border border-slate-200 rounded-xl">
+            <label class="rsc-label" for="goal-type-input">Type</label>
+            <select id="goal-type-input" class="rsc-input">
               ${GOAL_TYPES.map((t) => html`<option value="${t}" ${t === 'other' ? 'selected' : ''}>${titleCase(t)}</option>`)}
             </select>
           </div>
           <div>
-            <label class="text-[11px] font-semibold text-slate-600 block mb-1" for="goal-date-input">Target date</label>
-            <input id="goal-date-input" type="date" class="w-full text-xs p-2.5 bg-slate-50 border border-slate-200 rounded-xl" />
-          </div>
-        </div>
-        <div class="grid grid-cols-2 gap-2">
-          <div>
-            <label class="text-[11px] font-semibold text-slate-600 block mb-1" for="goal-target-input">Target (ZAR)</label>
-            <input id="goal-target-input" required type="number" min="1" step="any" inputmode="decimal" class="w-full text-xs p-2.5 bg-slate-50 border border-slate-200 rounded-xl" />
+            <label class="rsc-label" for="goal-date-input">Target date</label>
+            <input id="goal-date-input" type="date" class="rsc-input" />
           </div>
           <div>
-            <label class="text-[11px] font-semibold text-slate-600 block mb-1" for="goal-current-input">Saved so far (ZAR)</label>
-            <input id="goal-current-input" type="number" min="0" step="any" inputmode="decimal" value="0" class="w-full text-xs p-2.5 bg-slate-50 border border-slate-200 rounded-xl" />
+            <label class="rsc-label" for="goal-target-input">Target (ZAR)</label>
+            <input id="goal-target-input" required type="number" min="1" step="any" inputmode="decimal" class="rsc-input" />
+          </div>
+          <div>
+            <label class="rsc-label" for="goal-current-input">Saved so far (ZAR)</label>
+            <input id="goal-current-input" type="number" min="0" step="any" inputmode="decimal" value="0" class="rsc-input" />
           </div>
         </div>
-        <div class="flex justify-end space-x-2 pt-1">
-          <button type="button" id="cancel-add-goal-btn" class="px-3 py-1.5 text-xs text-slate-500 hover:text-slate-800">Cancel</button>
-          <button type="submit" class="px-4 py-1.5 bg-[#0A192F] text-amber-300 text-xs font-bold rounded-xl shadow-xs">Save goal</button>
+        <div class="flex justify-end gap-2 pt-1">
+          <button type="button" id="cancel-add-goal-btn" class="rsc-btn rsc-btn-secondary rsc-btn-sm">Cancel</button>
+          <button type="submit" class="rsc-btn rsc-btn-primary rsc-btn-sm">Save goal</button>
         </div>
       </form>
 
       ${goals.length === 0
-        ? html`<div class="p-8 text-center bg-white rounded-2xl border border-slate-200"><p class="text-xs text-slate-400">No goals yet. Add one to start tracking your progress.</p></div>`
+        ? html`<div class="rsc-card px-6 py-10 text-center"><h3 class="rsc-heading">No goals yet</h3><p class="rsc-muted mt-1.5">Add one to start tracking your progress.</p></div>`
         : html`<div class="space-y-3">
             ${goals.map((goal) => {
               const pct = Number(goal.target_amount) > 0 ? Math.min(100, Math.round((Number(goal.current_amount) / Number(goal.target_amount)) * 100)) : 0;
-              return html`<div class="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-xs">
-                <div class="flex justify-between items-start mb-2 gap-2">
+              return html`<div class="rsc-card p-4">
+                <div class="flex justify-between items-start gap-3">
                   <div class="min-w-0">
-                    <span class="text-[10px] font-bold uppercase tracking-wider text-amber-600">${titleCase(goal.goal_type)}</span>
-                    <h3 class="text-sm font-bold text-slate-800 mt-0.5">${goal.name}</h3>
-                    ${goal.description ? html`<p class="text-xs text-slate-500 mt-0.5">${goal.description}</p>` : ''}
+                    <p class="rsc-muted">${titleCase(goal.goal_type)}</p>
+                    <h3 class="rsc-heading mt-0.5">${goal.name}</h3>
+                    ${goal.description ? html`<p class="rsc-muted mt-0.5">${goal.description}</p>` : ''}
                   </div>
-                  <span class="text-xs font-bold px-2 py-1 bg-amber-50 text-amber-800 rounded-lg border border-amber-200/60 font-mono shrink-0">${pct}%</span>
+                  <span class="rsc-num text-sm font-semibold text-slate-900 shrink-0">${pct}%</span>
                 </div>
-                <div class="w-full bg-slate-100 rounded-full h-2.5 overflow-hidden my-3"><div class="bg-gradient-to-r from-[#0A192F] to-amber-500 h-2.5 rounded-full" style="width: ${pct}%"></div></div>
-                <div class="flex items-center justify-between text-xs pt-1 border-t border-slate-100">
-                  <div><span class="text-[10px] text-slate-400 block">Saved</span><span class="font-bold text-slate-800 font-mono">${formatZAR(goal.current_amount)}</span></div>
-                  <div class="text-center"><span class="text-[10px] text-slate-400 block">Target date</span><span class="font-medium text-slate-600">${formatDate(goal.target_date)}</span></div>
-                  <div class="text-right"><span class="text-[10px] text-slate-400 block">Target</span><span class="font-bold text-amber-800 font-mono">${formatZAR(goal.target_amount)}</span></div>
+                <div class="rsc-progress my-3"><span style="width: ${pct}%"></span></div>
+                <div class="grid grid-cols-3 gap-3">
+                  <div><p class="rsc-muted">Saved</p><p class="rsc-num text-[13px] font-semibold text-slate-900">${formatZAR(goal.current_amount)}</p></div>
+                  <div><p class="rsc-muted">Target date</p><p class="text-[13px] font-medium text-slate-800">${formatDate(goal.target_date)}</p></div>
+                  <div class="text-right"><p class="rsc-muted">Target</p><p class="rsc-num text-[13px] font-semibold text-slate-900">${formatZAR(goal.target_amount)}</p></div>
                 </div>
-                <div class="flex items-center justify-between gap-2 mt-3 pt-3 border-t border-slate-100">
+                <div class="flex items-center justify-between gap-2 mt-3 pt-3 rsc-divider">
                   <form data-goal-progress-form="${goal.id}" class="flex items-center gap-2">
-                    <input name="amount" type="number" min="0" step="any" inputmode="decimal" value="${goal.current_amount}" aria-label="Amount saved" class="w-28 text-xs p-1.5 bg-slate-50 border border-slate-200 rounded-lg font-mono" />
-                    <button type="submit" class="text-[11px] font-semibold text-blue-600 hover:text-blue-700">Update saved</button>
+                    <input name="amount" type="number" min="0" step="any" inputmode="decimal" value="${goal.current_amount}" aria-label="Amount saved" class="rsc-input !w-28 !py-1.5 !text-[13px] rsc-num" />
+                    <button type="submit" class="rsc-btn rsc-btn-secondary rsc-btn-sm">Update</button>
                   </form>
-                  <button data-action="remove-goal" data-id="${goal.id}" class="text-[11px] font-semibold text-rose-600 hover:text-rose-700">Remove</button>
+                  <button data-action="remove-goal" data-id="${goal.id}" class="rsc-btn rsc-btn-quiet rsc-btn-sm !text-red-700">Remove</button>
                 </div>
               </div>`;
             })}

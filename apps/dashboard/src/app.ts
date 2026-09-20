@@ -8,6 +8,7 @@ import { fullName } from '@shared/format';
 import { renderDashboardSidebar, type DashboardRouteKey } from './components/sidebar';
 import { renderDashboardHeader } from './components/top-header';
 import { renderRecordModal, type ModalState } from './components/ui';
+import { renderDocumentReviewModal, type DocumentReviewState } from './components/document-review';
 import { renderDashboardOverviewPage } from './pages/dashboard';
 import { renderClientsPage } from './pages/clients';
 import { renderClientDetailPage } from './pages/client-detail';
@@ -63,6 +64,7 @@ export class DashboardApp {
   private searchQuery = '';
   private authMode: 'login' | 'register' = 'login';
   private modal: ModalState | null = null;
+  private docReview: DocumentReviewState | null = null;
   private drawerOpen = false;
   private destroyed = false;
   private renderQueued = false;
@@ -94,6 +96,7 @@ export class DashboardApp {
     this.routeContext = context;
     this.drawerOpen = false;
     this.modal = null;
+    this.docReview = null;
     this.render();
     window.scrollTo({ top: 0 });
   }
@@ -242,12 +245,38 @@ export class DashboardApp {
           <main class="dashboard-content flex-1 p-4 sm:p-6 lg:p-8">${this.pageContent()}</main>
         </div>
         ${this.modal ? renderRecordModal(this.modal) : ''}
+        ${this.reviewModal()}
       </div>
     `.toString();
 
     this.restoreFields(saved);
     if (focusId) (this.container.querySelector(`#${CSS.escape(focusId)}`) as HTMLElement | null)?.focus();
     this.afterRender();
+  }
+
+  private reviewModal(): SafeHtml | '' {
+    if (!this.docReview) return '';
+    const doc = adviserService.getDocuments().find((d) => d.id === this.docReview!.docId);
+    return doc ? renderDocumentReviewModal(doc, this.docReview) : '';
+  }
+
+  private async openDocReview(docId: string): Promise<void> {
+    this.docReview = { docId, events: null };
+    this.render();
+    await this.loadDocReviewEvents(docId);
+  }
+
+  private async loadDocReviewEvents(docId: string): Promise<void> {
+    try {
+      const events = await adviserService.getDocumentEvents(docId);
+      if (this.docReview?.docId !== docId) return; // closed or switched while loading
+      this.docReview = { docId, events };
+    } catch (error) {
+      if (this.docReview?.docId !== docId) return;
+      this.docReview = { docId, events: [] };
+      showToast(error instanceof Error ? error.message : 'Could not load the engine trace.', 'error');
+    }
+    this.render();
   }
 
   private afterRender(): void {
@@ -311,7 +340,7 @@ export class DashboardApp {
     this.setChip('doc', chip);
     const query = (this.container.querySelector('#doc-search-input') as HTMLInputElement | null)?.value.toLowerCase().trim() || '';
     this.container.querySelectorAll<HTMLElement>('#documents-table-body tr').forEach((row) => {
-      const matchesChip = chip === 'all' || row.dataset.verified === 'false';
+      const matchesChip = chip === 'all' || (chip === 'pending' && row.dataset.verified === 'false') || (chip === 'review' && row.dataset.status === 'under_review');
       const matchesText = !query || (row.dataset.search || '').includes(query);
       row.style.display = matchesChip && matchesText ? '' : 'none';
     });
@@ -444,6 +473,31 @@ export class DashboardApp {
       case 'verify-doc': {
         const verified = el.dataset.verified === 'true';
         return void this.run(() => adviserService.verifyDocument(id, verified), verified ? 'Document verified. The client has been notified.' : 'Verification removed');
+      }
+      case 'review-doc':
+        return this.openDocReview(id);
+      case 'close-doc-review':
+        this.docReview = null;
+        return this.render();
+      case 'approve-doc': {
+        const fields: Record<string, string> = {};
+        this.container.querySelectorAll<HTMLInputElement>('[data-review-field]').forEach((input) => {
+          fields[input.dataset.reviewField!] = input.value.trim();
+        });
+        const hasFields = Object.keys(fields).length > 0;
+        if (await this.run(() => adviserService.approveDocument(id, hasFields ? fields : undefined), 'Document approved. The client has been notified.')) {
+          this.docReview = null;
+          this.render();
+        }
+        return;
+      }
+      case 'reject-doc': {
+        const reason = (this.container.querySelector('#review-reject-reason') as HTMLInputElement | null)?.value ?? '';
+        if (await this.run(() => adviserService.rejectDocument(id, reason), 'Document rejected. The client has been asked to upload again.')) {
+          this.docReview = null;
+          this.render();
+        }
+        return;
       }
       case 'open-doc': {
         const doc = adviserService.getDocuments().find((d) => d.id === id);

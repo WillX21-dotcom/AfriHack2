@@ -6,6 +6,40 @@
 -- recreates the complete set.
 
 -- ---------------------------------------------------------------------------------------------
+-- 0. Remove objects left behind by earlier manual set-ups
+-- ---------------------------------------------------------------------------------------------
+-- An older hand-written layer (triggers named trg_*) overlaps this schema: it creates the same
+-- request workflow steps (so create_client_request() hit the unique(request_id, step_number) key),
+-- writes duplicate claim timeline / notification / audit rows, and its protect_* triggers reject the
+-- SQL editor (no signed-in user) so an administrator could never be bootstrapped. guard_profile_update
+-- and guard_client_update below replace the protect_* triggers. Nothing here matches the triggers
+-- this schema creates (none of them start with "trg_"), and dropping is a no-op on a clean project.
+do $$
+declare
+  r record;
+begin
+  for r in
+    select c.relname as tbl, t.tgname as trg
+    from pg_trigger t
+    join pg_class c on c.oid = t.tgrelid
+    join pg_namespace n on n.oid = c.relnamespace
+    where n.nspname = 'public' and not t.tgisinternal and t.tgname like 'trg\_%' escape '\'
+  loop
+    execute format('drop trigger if exists %I on public.%I', r.trg, r.tbl);
+  end loop;
+end $$;
+
+drop function if exists public.protect_profile_fields();
+drop function if exists public.protect_client_fields();
+drop function if exists public.add_claim_status_timeline();
+drop function if exists public.notify_claim_update();
+drop function if exists public.audit_request_changes();
+drop function if exists public.initialize_request_workflow();
+drop function if exists public.notify_request_assignment();
+drop function if exists public.generate_claim_number();
+drop function if exists public.generate_request_number();
+
+-- ---------------------------------------------------------------------------------------------
 -- 1. Schema corrections
 -- ---------------------------------------------------------------------------------------------
 

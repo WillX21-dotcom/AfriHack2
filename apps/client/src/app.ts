@@ -1,4 +1,4 @@
-import { html, raw, isStaff, type SafeHtml } from '@shared/index';
+import { html, isOcrEligible, raw, isStaff, type SafeHtml } from '@shared/index';
 import { attachSharedAuthEvents, getSession, logout, renderSharedAuthScreen } from '@shared/auth';
 import { updateCurrentProfile } from '@shared/profile';
 import type { DocumentType } from '@shared/types/document';
@@ -255,7 +255,7 @@ export class ClientApp {
     this.container.innerHTML = html`
       <div class="client-pwa-root min-h-screen bg-slate-50 flex flex-col justify-between">
         ${renderClientHeader(title, subtitle, showBack)}
-        <main class="flex-1 max-w-3xl mx-auto w-full px-4 pt-4 pb-28">${page}</main>
+        <main class="flex-1 max-w-3xl mx-auto w-full px-4 pt-5 pb-28">${page}</main>
         ${raw(renderClientTabBar(activeTab))}
         ${this.currentRoute === 'report-accident' ? raw(renderCameraCaptureModal()) : ''}
       </div>`.value;
@@ -499,8 +499,25 @@ export class ClientApp {
         const file = this.container.querySelector<HTMLInputElement>('#doc-upload-input')?.files?.[0];
         if (!file) throw new Error('Please choose a file to upload.');
         if (file.size > 10 * 1024 * 1024) throw new Error('Files must be 10 MB or smaller.');
-        await documentService.uploadDocument(file, value('doc-type-select') as DocumentType);
-        showToast('Document uploaded. Your adviser has been notified.', 'success');
+        const documentType = value('doc-type-select') as DocumentType;
+        const document = await documentService.uploadDocument(file, documentType);
+        if (isOcrEligible(documentType)) {
+          const processing = await documentService.processDocument(document.id);
+          const processed = processing.document;
+          if (processing.invocationFailed) {
+            showToast('Document uploaded. Automatic checking is unavailable, so your adviser will review it.', 'success');
+          } else if (processed?.processing_status === 'rejected') {
+            showToast('Document uploaded, but it needs to be uploaded again.', 'error');
+          } else if (processed?.processing_status === 'under_review') {
+            showToast('Document uploaded. Your adviser will review it.', 'success');
+          } else if (processed?.processing_status === 'auto_completed' || processed?.processing_status === 'successful') {
+            showToast('Document uploaded and verified.', 'success');
+          } else {
+            showToast("Document uploaded. We're still checking it.", 'success');
+          }
+        } else {
+          showToast('Document uploaded. Your adviser has been notified.', 'success');
+        }
       });
       return;
     }
@@ -585,7 +602,7 @@ export class ClientApp {
     } catch (error) {
       showToast((error as Error).message, 'error');
     } finally {
-      if (button?.isConnected) button.textContent = '📍 Use my location';
+      if (button?.isConnected) button.textContent = 'Use my location';
     }
   }
 

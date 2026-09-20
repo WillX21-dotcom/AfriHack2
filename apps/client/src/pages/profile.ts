@@ -2,6 +2,7 @@ import { dataStore } from '@supabase-pkg/client';
 import { fullName, html, initials, maskIdNumber, type SafeHtml } from '@shared/index';
 import { clientService } from '../services/client';
 import { getOnboardingSteps } from './onboarding';
+import { icon } from '../components/icons';
 
 const PROVINCES = ['Eastern Cape', 'Free State', 'Gauteng', 'KwaZulu-Natal', 'Limpopo', 'Mpumalanga', 'Northern Cape', 'North West', 'Western Cape'];
 const MARITAL = ['Single', 'Married in community of property', 'Married out of community of property', 'Divorced', 'Widowed', 'Life partner'];
@@ -13,50 +14,50 @@ export function renderProfilePage(): SafeHtml {
   const completed = steps.filter((s) => s.done).length;
 
   const text = (id: string, label: string, value: string | null | undefined, type = 'text') => html`
-    <label class="text-xs text-slate-500 block">${label}
-      <input id="${id}" type="${type}" value="${value || ''}" class="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-xs text-slate-900" />
-    </label>`;
+    <div>
+      <label for="${id}" class="rsc-label">${label}</label>
+      <input id="${id}" type="${type}" value="${value || ''}" class="rsc-input" />
+    </div>`;
 
   return html`
-    <div class="space-y-4 pb-24">
-      <div class="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-xs text-center">
-        <div class="w-16 h-16 rounded-full bg-[#0A192F] text-amber-300 font-serif-royal font-bold text-xl flex items-center justify-center mx-auto shadow-md">${initials(user)}</div>
-        <h2 class="text-base font-bold text-slate-900 mt-2">${fullName(user)}</h2>
-        <span class="text-xs font-mono text-slate-400 font-semibold">${client?.client_number || 'Client account'}</span>
-        <div class="mt-2">
-          <button data-nav="onboarding" class="inline-flex items-center space-x-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold border ${client?.onboarding_completed ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-amber-50 text-amber-800 border-amber-200'}">
-            <span>${client?.onboarding_completed ? '✓ Onboarding complete' : `Onboarding ${completed}/${steps.length}`}</span>
-          </button>
+    <div class="space-y-4 pb-4">
+      <section class="rsc-card p-5 flex items-center gap-4">
+        <span class="w-14 h-14 rounded-full bg-[#0A192F] text-white text-lg font-semibold flex items-center justify-center shrink-0">${initials(user)}</span>
+        <div class="min-w-0 flex-1">
+          <h2 class="text-base font-semibold text-slate-900 truncate">${fullName(user)}</h2>
+          <p class="rsc-ref !text-[12px]">${client?.client_number || 'Client account'}</p>
+          <button data-nav="onboarding" class="mt-1.5 rsc-badge ${client?.onboarding_completed ? 'rsc-badge-green' : 'rsc-badge-amber'}">${client?.onboarding_completed ? 'Onboarding complete' : `Onboarding ${completed} of ${steps.length}`}</button>
         </div>
-      </div>
+      </section>
 
-      <form id="client-profile-form" class="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-xs space-y-3">
-        <h3 class="text-xs font-bold text-slate-800 uppercase tracking-wide">Account details</h3>
+      <form id="client-profile-form" class="rsc-card p-4 space-y-3.5">
+        <h3 class="rsc-eyebrow">Account details</h3>
         <div class="grid grid-cols-2 gap-3">
-          <label class="text-xs text-slate-500">First name<input id="client-profile-first-name" value="${user?.first_name || ''}" required class="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-xs text-slate-900" /></label>
-          <label class="text-xs text-slate-500">Last name<input id="client-profile-last-name" value="${user?.last_name || ''}" required class="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-xs text-slate-900" /></label>
+          <div><label for="client-profile-first-name" class="rsc-label">First name</label><input id="client-profile-first-name" value="${user?.first_name || ''}" required class="rsc-input" /></div>
+          <div><label for="client-profile-last-name" class="rsc-label">Last name</label><input id="client-profile-last-name" value="${user?.last_name || ''}" required class="rsc-input" /></div>
         </div>
-        <label class="text-xs text-slate-500 block">Phone<input id="client-profile-phone" type="tel" value="${user?.phone || ''}" class="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-xs text-slate-900" /></label>
-        <p class="text-[11px] text-slate-400">Email: ${user?.email || '—'}</p>
-        <button type="submit" class="w-full rounded-xl bg-[#0A192F] py-2.5 text-xs font-bold text-amber-300 hover:bg-slate-800 disabled:opacity-60">Save account details</button>
+        <div><label for="client-profile-phone" class="rsc-label">Phone</label><input id="client-profile-phone" type="tel" value="${user?.phone || ''}" class="rsc-input" /></div>
+        <p class="rsc-muted">Email: ${user?.email || '—'}</p>
+        <button type="submit" class="rsc-btn rsc-btn-primary rsc-btn-block">Save account details</button>
       </form>
 
       ${client
-        ? html`<form id="client-details-form" class="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-xs space-y-3">
+        ? html`<form id="client-details-form" class="rsc-card p-4 space-y-3.5">
             <div>
-              <h3 class="text-xs font-bold text-slate-800 uppercase tracking-wide">Personal details and FICA</h3>
-              <p class="text-[11px] text-slate-400 mt-0.5">Required by law for your adviser to act for you. ID on file: ${maskIdNumber(client.id_number)}</p>
+              <h3 class="rsc-eyebrow">Personal details and FICA</h3>
+              <p class="rsc-muted mt-1">Required by law for your adviser to act for you. ID on file: ${maskIdNumber(client.id_number)}</p>
             </div>
             <div class="grid grid-cols-2 gap-3">
               ${text('cd-id-number', 'South African ID number', client.id_number)}
               ${text('cd-dob', 'Date of birth', client.date_of_birth, 'date')}
             </div>
-            <label class="text-xs text-slate-500 block">Marital status
-              <select id="cd-marital" class="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-xs text-slate-900">
+            <div>
+              <label for="cd-marital" class="rsc-label">Marital status</label>
+              <select id="cd-marital" class="rsc-input">
                 <option value="">Select</option>
                 ${MARITAL.map((m) => html`<option value="${m}" ${client.marital_status === m ? 'selected' : ''}>${m}</option>`)}
               </select>
-            </label>
+            </div>
             <div class="grid grid-cols-2 gap-3">
               ${text('cd-occupation', 'Occupation', client.occupation)}
               ${text('cd-employer', 'Employer', client.employer)}
@@ -67,31 +68,29 @@ export function renderProfilePage(): SafeHtml {
               ${text('cd-city', 'City', client.city)}
               ${text('cd-postal', 'Postal code', client.postal_code)}
             </div>
-            <label class="text-xs text-slate-500 block">Province
-              <select id="cd-province" class="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-xs text-slate-900">
+            <div>
+              <label for="cd-province" class="rsc-label">Province</label>
+              <select id="cd-province" class="rsc-input">
                 <option value="">Select</option>
                 ${PROVINCES.map((p) => html`<option value="${p}" ${client.province === p ? 'selected' : ''}>${p}</option>`)}
               </select>
-            </label>
-            <label class="text-xs text-slate-500 block">Preferred contact method
-              <select id="cd-contact" class="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-xs text-slate-900">
+            </div>
+            <div>
+              <label for="cd-contact" class="rsc-label">Preferred contact method</label>
+              <select id="cd-contact" class="rsc-input">
                 ${['app', 'email', 'phone'].map((m) => html`<option value="${m}" ${(client.preferred_contact_method || 'app') === m ? 'selected' : ''}>${m === 'app' ? 'In this app' : m === 'email' ? 'Email' : 'Phone'}</option>`)}
               </select>
-            </label>
-            <button type="submit" class="w-full rounded-xl bg-[#0A192F] py-2.5 text-xs font-bold text-amber-300 hover:bg-slate-800 disabled:opacity-60">Save personal details</button>
+            </div>
+            <button type="submit" class="rsc-btn rsc-btn-primary rsc-btn-block">Save personal details</button>
           </form>`
         : ''}
 
-      <div class="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-xs space-y-2">
-        <h3 class="text-xs font-bold text-slate-800 uppercase tracking-wide">POPIA and privacy</h3>
-        <p class="text-xs text-slate-500 leading-relaxed">
-          Royal Square Financial is an authorised financial services provider (FSP #48921) and processes your personal information under the Protection of Personal Information Act (POPIA). Documents you upload are stored privately and are only visible to you and your Royal Square team.
-        </p>
-      </div>
+      <section class="rsc-card p-4">
+        <h3 class="rsc-eyebrow">POPIA and privacy</h3>
+        <p class="rsc-text mt-2">Royal Square Financial is an authorised financial services provider (FSP #48921) and processes your personal information under the Protection of Personal Information Act (POPIA). Documents you upload are stored privately and are only visible to you and your Royal Square team.</p>
+      </section>
 
-      <div class="bg-slate-100 p-4 rounded-2xl border border-slate-200 text-center">
-        <button id="client-logout-btn" class="w-full py-2 bg-white text-slate-700 text-xs font-semibold rounded-xl border border-slate-200 hover:bg-slate-50 transition-colors">Sign out</button>
-      </div>
+      <button id="client-logout-btn" class="rsc-btn rsc-btn-secondary rsc-btn-block">${icon('logout', 'w-4 h-4', 2)}Sign out</button>
     </div>
   `;
 }

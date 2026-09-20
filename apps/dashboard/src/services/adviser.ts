@@ -3,7 +3,7 @@ import { uploadClientDocument, markNotificationsRead } from '@supabase-pkg/helpe
 import type { Profile } from '@shared/types/user';
 import type { Request } from '@shared/types/request';
 import type { Claim } from '@shared/types/claim';
-import type { DocumentType } from '@shared/types/document';
+import type { DocumentEvent, DocumentType } from '@shared/types/document';
 import { fullName, isOpenClaim, isOpenRequest } from '@shared/format';
 import { CLAIM_STAGES } from '@shared/constants/claim-stages';
 
@@ -17,6 +17,14 @@ async function refresh<T>(result: { error: { message: string } | null } & T): Pr
   unwrap(result);
   await hydrateRemoteState();
   return result;
+}
+
+/** Record a human review action in the document's trace. The row update is already audited server side, so a failure here only costs the trace entry. */
+async function logDocumentEvent(documentId: string, clientId: string, eventType: string, payload: Record<string, unknown>): Promise<void> {
+  const { error } = await supabase
+    .from('document_events')
+    .insert({ document_id: documentId, client_id: clientId, event_type: eventType, payload, actor: state().currentUser?.id ?? null });
+  if (error) console.warn('Could not record document event:', error.message);
 }
 
 export const adviserService = {
@@ -212,6 +220,33 @@ export const adviserService = {
 
   async verifyDocument(docId: string, verified: boolean) {
     await refresh(await supabase.from('documents').update({ is_verified: verified }).eq('id', docId));
+  },
+
+  /** The engine trace for one document, oldest first. */
+  async getDocumentEvents(docId: string): Promise<DocumentEvent[]> {
+    const { data } = unwrap(await supabase.from('document_events').select('*').eq('document_id', docId).order('created_at', { ascending: true }));
+    return (data ?? []) as DocumentEvent[];
+  },
+
+  /** Human review: accept the document, optionally correcting what the OCR extracted. */
+  async approveDocument(docId: string, extractedFields?: Record<string, string>) {
+    const doc = state().documents.find((d) => d.id === docId);
+    if (!doc) throw new Error('Document not found.');
+    const update: Record<string, unknown> = { processing_status: 'successful', human_review_required: false, rejection_reason: null };
+    const edited = extractedFields ? Object.keys(extractedFields).filter((k) => String(extractedFields[k] ?? '') !== String(doc.extracted_fields?.[k] ?? '')) : [];
+    if (extractedFields) update.extracted_fields = extractedFields;
+    await refresh(await supabase.from('documents').update(update).eq('id', docId));
+    await logDocumentEvent(doc.id, doc.client_id, 'approved', { edited_fields: edited, previous: edited.length ? doc.extracted_fields : undefined });
+  },
+
+  /** Human review: reject with a reason the client will see, asking for a clearer upload. */
+  async rejectDocument(docId: string, reason: string) {
+    const doc = state().documents.find((d) => d.id === docId);
+    if (!doc) throw new Error('Document not found.');
+    const trimmed = reason.trim();
+    if (!trimmed) throw new Error('Give the client a reason so they know what to fix.');
+    await refresh(await supabase.from('documents').update({ processing_status: 'rejected', human_review_required: false, rejection_reason: trimmed }).eq('id', docId));
+    await logDocumentEvent(doc.id, doc.client_id, 'rejected', { reason: trimmed });
   },
 
   async uploadForClient(options: { clientId: string; file: File; documentType: DocumentType; requestId?: string | null; claimId?: string | null }) {

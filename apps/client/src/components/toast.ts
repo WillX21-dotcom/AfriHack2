@@ -3,15 +3,10 @@ export function showToast(message: string, type: 'success' | 'info' | 'error' = 
 
   const toast = document.createElement('div');
   toast.id = 'rsf-client-toast';
-  toast.setAttribute('role', 'status');
-  const bg = type === 'success' ? 'bg-emerald-800 text-white' : type === 'error' ? 'bg-red-800 text-white' : 'bg-[#0A192F] text-amber-200';
-  toast.className = `fixed top-5 left-1/2 -translate-x-1/2 z-50 max-w-[90vw] px-4 py-2.5 rounded-2xl text-xs font-medium shadow-xl flex items-start space-x-2 transition-all duration-300 ${bg}`;
-
-  const icon = document.createElement('span');
-  icon.textContent = type === 'success' ? '✓' : type === 'error' ? '✕' : 'ℹ';
-  const text = document.createElement('span');
-  text.textContent = message; // textContent: messages can contain server-supplied text
-  toast.append(icon, text);
+  toast.setAttribute('role', type === 'error' ? 'alert' : 'status');
+  const tone = type === 'success' ? 'bg-[#0A192F] text-white' : type === 'error' ? 'bg-red-700 text-white' : 'bg-white text-slate-800 border border-slate-200';
+  toast.className = `fixed top-4 left-1/2 -translate-x-1/2 z-50 w-[calc(100vw-2rem)] max-w-sm px-4 py-3 rounded-xl text-[13px] font-medium shadow-lg transition-opacity duration-300 ${tone}`;
+  toast.textContent = message; // textContent: messages can contain server-supplied text
 
   document.body.appendChild(toast);
   setTimeout(() => {

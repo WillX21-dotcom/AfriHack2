@@ -1,5 +1,5 @@
 import { dataStore } from '@supabase-pkg/client';
-import { openDocument, uploadClientDocument } from '@supabase-pkg/helpers';
+import { openDocument, startDocumentProcessing, uploadClientDocument, waitForDocumentProcessing } from '@supabase-pkg/helpers';
 import type { DocumentRecord, DocumentType } from '@shared/types/document';
 import { clientService } from './client';
 
@@ -24,7 +24,13 @@ export const documentService = {
   async uploadDocument(file: File, documentType: DocumentType): Promise<DocumentRecord> {
     const client = clientService.getCurrentClient();
     if (!client) throw new Error('No client file is linked to this account.');
-    return uploadClientDocument({ clientId: client.id, file, documentType });
+    return uploadClientDocument({ clientId: client.id, file, documentType, startProcessing: false });
+  },
+
+  async processDocument(documentId: string): Promise<{ document: DocumentRecord | null; invocationFailed: boolean }> {
+    const response = await startDocumentProcessing(documentId);
+    if (!response) return { document: null, invocationFailed: true };
+    return { document: await waitForDocumentProcessing(documentId), invocationFailed: false };
   },
 
   open(doc: DocumentRecord): Promise<void> {

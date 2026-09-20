@@ -10,8 +10,20 @@ supabase link --project-ref <ref>      # once
 supabase db push                       # applies any unapplied migrations
 ```
 
-Migrations 001-021 were applied to the linked project earlier. **022, 023 and 024 must be pushed** before the
+Migrations 001-021 were applied to the linked project earlier. **022, 023, 024 and 025 must be pushed** before the
 apps work: without them new sign-ups get no `clients` row, so they cannot submit requests or claims.
+
+## Existing projects: legacy `trg_*` objects
+
+A project that was set up by hand before these migrations may carry an older trigger layer. On the linked
+project it had nine `trg_*` triggers (workflow-step creation, claim timeline and notification, request audit,
+number generation, assignment notification, `protect_profile_fields` / `protect_client_fields`) and an old
+4-argument `create_motor_claim`. They duplicate what migrations 023/024 now do, made request creation fail with a
+duplicate-key error, and their protect triggers rejected the SQL editor, which blocked promoting the first admin.
+
+Migration 023 (section 0) therefore **drops every trigger in `public` whose name starts with `trg_`** and the nine
+matching legacy functions, and 024 drops the old `create_motor_claim` overload. It is a no-op on a clean project.
+If you keep your own triggers in `public`, do not name them `trg_*`, or review section 0 before pushing.
 
 ## First admin
 
@@ -42,7 +54,7 @@ select email, role from public.profiles where role <> 'client';
 | --- | --- |
 | People | `profiles` (1:1 with `auth.users`), `clients`, `dependants`, `beneficiaries` |
 | Balance sheet | `assets`, `liabilities`, `income`, `expenses`, `policies`, `investments`, `goals` |
-| Service | `requests`, `request_workflows`, `tasks`, `reminders`, `documents` |
+| Service | `requests`, `request_workflows`, `tasks`, `reminders`, `documents`, `document_events` |
 | Claims | `claims`, `claim_timeline`, `claim_witnesses`, `claim_vehicles` |
 | Communication | `notifications`, `messages`, `push_subscriptions` |
 | Reference / audit | `providers`, `audit_logs` |
@@ -86,7 +98,28 @@ Defined in one place, migration 023.
 * Request status change: notifies the client, stamps `completed_at`, completes/cancels linked tasks.
 * Claim status change: stamps `closed_at`/`repair_authorised`, writes the client-visible timeline entry, notifies the client.
 * Document uploaded: notifies the other party. Document verified: stamps `verified_by/at`, notifies the client.
+* Document processing (025): rejected -> client is told to re-upload; under review / escalated -> adviser is notified.
 * `updated_at` maintained on every table; row-level audit trail on all business tables.
+
+## Document processing (migration 025)
+
+Uploads of `id_document` and `proof_of_address` go through the `process-document` edge function
+(`supabase/functions/process-document`): extract fields with Gemini, apply the rules in
+`packages/shared/src/rules/documentRules.ts`, then write the outcome. Everything else stays manual.
+
+| Column on `documents` | Meaning |
+| --- | --- |
+| `processing_status` | `pending`, `processing`, `auto_completed`, `under_review`, `successful`, `rejected` |
+| `confidence_score`, `extracted_fields` | OCR result (0-1 confidence; JSON of the fields the rules require) |
+| `human_review_required`, `rejection_reason` | Why an adviser must look / why the upload failed |
+| `reupload_count`, `escalated_at` | Earlier rejected uploads of the same type; set when the 5-re-upload limit is exhausted |
+
+* `is_verified` is derived: `auto_completed` and `successful` set it, so FICA status and onboarding keep working.
+  Toggling `is_verified` directly still works and moves the status with it.
+* Clients cannot set any of these: an insert guard resets them for non-staff, and only staff / the service role can update.
+* `document_events` is the append-only engine trace (`ocr_started`, `fields_extracted`, `rule_outcome`, adviser actions).
+  Staff can insert their own actions; the edge function writes engine steps with the service role.
+* Edge function secrets: `supabase secrets set GEMINI_API_KEY=...`, then `supabase functions deploy process-document`.
 
 ## Storage
 

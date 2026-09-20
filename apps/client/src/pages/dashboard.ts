@@ -7,6 +7,15 @@ import { requestService } from '../services/request';
 import { claimService } from '../services/claim';
 import { messageService } from '../services/message';
 import { renderStatusBadge } from '../components/status-badge';
+import { icon, type IconName } from '../components/icons';
+
+function sectionHeader(title: string, nav?: string): SafeHtml {
+  return html`
+    <div class="flex items-center justify-between mb-2.5">
+      <h3 class="rsc-eyebrow">${title}</h3>
+      ${nav ? html`<button data-nav="${nav}" class="rsc-link">View all</button>` : ''}
+    </div>`;
+}
 
 export function renderClientDashboardPage(): SafeHtml {
   const user = dataStore.getState().currentUser;
@@ -21,105 +30,105 @@ export function renderClientDashboardPage(): SafeHtml {
   const stageIndex = activeClaim ? claimStageIndex(activeClaim.status) : -1;
   const stageLabel = activeClaim ? CLAIM_STAGES[stageIndex]?.clientLabel || activeClaim.status : '';
 
+  const action = (nav: string, label: string, name: IconName, opts: { danger?: boolean; badge?: number } = {}) => html`
+    <button data-nav="${nav}" class="relative rsc-card rsc-card-link !w-auto flex flex-col items-center gap-2 px-2 py-3.5 text-center">
+      <span class="rsc-chip ${opts.danger ? 'rsc-chip-danger' : ''}">${icon(name, 'w-[18px] h-[18px]', 2)}</span>
+      <span class="text-xs font-semibold text-slate-800 leading-tight">${label}</span>
+      ${opts.badge ? html`<span class="absolute top-1.5 right-1.5 min-w-4 h-4 px-1 rounded-full bg-red-600 text-white font-semibold text-[10px] leading-4">${opts.badge}</span>` : ''}
+    </button>`;
+
   return html`
-    <div class="space-y-4 pb-20 max-w-3xl mx-auto">
+    <div class="space-y-6 pb-4">
       <div>
-        <h2 class="text-xl sm:text-2xl font-bold text-slate-900 tracking-tight">${greeting()}, ${user?.first_name || fullName(user, 'there')}</h2>
-        <p class="text-xs sm:text-sm text-slate-500 mt-0.5">
-          ${adviser ? html`Your adviser is <strong class="text-slate-700">${fullName(adviser)}</strong>.` : 'Your financial journey, our priority.'}
-        </p>
+        <h2 class="rsc-title">${greeting()}, ${user?.first_name || fullName(user, 'there')}</h2>
+        <p class="rsc-subtitle mt-0.5">${adviser ? html`Your adviser is <strong class="text-slate-800 font-semibold">${fullName(adviser)}</strong>` : 'Your Royal Square adviser will be assigned shortly'}</p>
       </div>
 
       ${!client
-        ? html`<div class="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-xs text-amber-900">Your client file is being set up. Please contact Royal Square if this message does not go away.</div>`
+        ? html`<div class="rsc-notice rsc-notice-warn">Your client file is being set up. Please contact Royal Square if this message does not go away.</div>`
         : ''}
 
-      <div data-nav="financial" class="bg-white rounded-2xl p-4 sm:p-5 border border-slate-200/90 shadow-xs cursor-pointer hover:shadow-md transition-all">
-        <div class="flex items-center justify-between">
-          <div>
-            <p class="text-xs font-medium text-slate-500">Net worth</p>
+      <button data-nav="financial" class="rsc-card rsc-card-link p-5 block">
+        <div class="flex items-start justify-between gap-3">
+          <div class="min-w-0">
+            <p class="rsc-eyebrow">Net worth</p>
             ${summary.hasFinancialData
-              ? html`<span class="text-xl sm:text-2xl font-bold text-slate-900 font-mono">${formatZAR(summary.netWorth)}</span>
-                  <p class="text-[11px] text-slate-400 mt-0.5">${formatZAR(summary.totalAssets + summary.totalInvestments)} assets and investments, ${formatZAR(summary.totalLiabilities)} liabilities</p>`
-              : html`<span class="text-sm font-semibold text-slate-700">Not captured yet</span>
-                  <p class="text-[11px] text-slate-400 mt-0.5">Your adviser will add your balance sheet during onboarding.</p>`}
+              ? html`<p class="rsc-num text-[28px] leading-tight font-semibold text-slate-900 mt-1.5">${formatZAR(summary.netWorth)}</p>`
+              : html`<p class="text-base font-semibold text-slate-700 mt-1.5">Not captured yet</p>`}
           </div>
-          <span class="text-slate-400">→</span>
+          <span class="text-slate-400 mt-1">${icon('chevronRight', 'w-5 h-5')}</span>
+        </div>
+        ${summary.hasFinancialData
+          ? html`<div class="grid grid-cols-2 gap-4 mt-4 pt-4 rsc-divider">
+              <div><p class="rsc-muted">Assets and investments</p><p class="rsc-num text-sm font-semibold text-slate-900 mt-0.5">${formatZAR(summary.totalAssets + summary.totalInvestments)}</p></div>
+              <div><p class="rsc-muted">Liabilities</p><p class="rsc-num text-sm font-semibold text-slate-900 mt-0.5">${formatZAR(summary.totalLiabilities)}</p></div>
+            </div>`
+          : html`<p class="rsc-muted mt-2">Your adviser will add your balance sheet during onboarding.</p>`}
+      </button>
+
+      <div>
+        <h3 class="rsc-eyebrow mb-2.5">Quick actions</h3>
+        <div class="grid grid-cols-4 gap-2.5">
+          ${action('create-request', 'New request', 'document')}
+          ${action('report-accident', 'Report accident', 'alert', { danger: true })}
+          ${action('documents', 'Documents', 'folder')}
+          ${action('messages', 'Messages', 'chat', { badge: unreadMessages })}
         </div>
       </div>
 
       <div>
-        <h3 class="text-xs font-bold text-slate-900 mb-2.5">Quick actions</h3>
-        <div class="grid grid-cols-4 gap-2 sm:gap-3">
-          <button data-nav="create-request" class="bg-blue-50/70 hover:bg-blue-100/70 border border-blue-100/80 rounded-2xl p-3 text-center transition-all">
-            <span class="block text-lg">📝</span><span class="text-[11px] font-semibold text-slate-800 leading-tight">Request<br/>service</span>
-          </button>
-          <button data-nav="report-accident" class="bg-red-50/70 hover:bg-red-100/70 border border-red-100/80 rounded-2xl p-3 text-center transition-all">
-            <span class="block text-lg">🚗</span><span class="text-[11px] font-semibold text-slate-800 leading-tight">Report<br/>accident</span>
-          </button>
-          <button data-nav="documents" class="bg-emerald-50/70 hover:bg-emerald-100/70 border border-emerald-100/80 rounded-2xl p-3 text-center transition-all">
-            <span class="block text-lg">📁</span><span class="text-[11px] font-semibold text-slate-800 leading-tight">Documents</span>
-          </button>
-          <button data-nav="messages" class="relative bg-purple-50/70 hover:bg-purple-100/70 border border-purple-100/80 rounded-2xl p-3 text-center transition-all">
-            <span class="block text-lg">💬</span><span class="text-[11px] font-semibold text-slate-800 leading-tight">Contact<br/>adviser</span>
-            ${unreadMessages > 0 ? html`<span class="absolute -top-1 -right-1 min-w-4 h-4 px-1 rounded-full bg-red-500 text-white font-bold text-[9px] flex items-center justify-center">${unreadMessages}</span>` : ''}
-          </button>
-        </div>
-      </div>
-
-      <div>
-        <div class="flex items-center justify-between mb-2.5">
-          <h3 class="text-xs font-bold text-slate-900">Goals</h3>
-          <button data-nav="goals" class="text-xs font-semibold text-blue-600 hover:text-blue-700">View all →</button>
-        </div>
+        ${sectionHeader('Goals', 'goals')}
         ${goals.length === 0
-          ? html`<div class="bg-white rounded-2xl p-4 border border-dashed border-slate-300 text-xs text-slate-500">No goals yet. <button data-nav="goals" class="font-semibold text-blue-600">Set your first goal</button>.</div>`
+          ? html`<div class="rsc-card px-4 py-5"><p class="rsc-muted">No goals yet. <button data-nav="goals" class="rsc-link">Set your first goal</button></p></div>`
           : html`<div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
               ${goals.map((goal) => {
                 const pct = goal.target_amount > 0 ? Math.min(100, Math.round((Number(goal.current_amount) / Number(goal.target_amount)) * 100)) : 0;
-                return html`<div class="bg-white rounded-2xl p-4 border border-slate-200/90 shadow-xs">
-                  <div class="flex items-center justify-between mb-2">
-                    <h4 class="text-xs font-bold text-slate-800 truncate pr-2">${goal.name}</h4>
-                    <span class="text-xs font-bold text-slate-600 font-mono">${pct}%</span>
+                return html`<div class="rsc-card p-4">
+                  <div class="flex items-center justify-between gap-2">
+                    <h4 class="rsc-heading truncate">${goal.name}</h4>
+                    <span class="rsc-num text-xs font-semibold text-slate-600">${pct}%</span>
                   </div>
-                  <p class="text-xs font-semibold text-slate-900 font-mono">${formatZAR(goal.current_amount)} <span class="text-slate-400 font-normal">/ ${formatZAR(goal.target_amount)}</span></p>
-                  <div class="w-full bg-slate-100 rounded-full h-2 mt-2 overflow-hidden"><div class="bg-emerald-500 h-2 rounded-full" style="width: ${pct}%"></div></div>
+                  <p class="rsc-num text-[13px] text-slate-900 mt-1"><span class="font-semibold">${formatZAR(goal.current_amount)}</span> <span class="text-slate-400">of ${formatZAR(goal.target_amount)}</span></p>
+                  <div class="rsc-progress mt-3"><span style="width: ${pct}%"></span></div>
                 </div>`;
               })}
             </div>`}
       </div>
 
       <div>
-        <div class="flex items-center justify-between mb-2.5">
-          <h3 class="text-xs font-bold text-slate-900">Recent requests</h3>
-          <button data-nav="requests" class="text-xs font-semibold text-blue-600 hover:text-blue-700">View all →</button>
-        </div>
+        ${sectionHeader('Recent requests', 'requests')}
         ${requests.length === 0
-          ? html`<div class="bg-white rounded-2xl p-4 border border-dashed border-slate-300 text-xs text-slate-500">You have not submitted any requests yet.</div>`
-          : html`<div class="space-y-2">
+          ? html`<div class="rsc-card px-4 py-5"><p class="rsc-muted">You have not submitted any requests yet.</p></div>`
+          : html`<div class="rsc-card divide-y divide-slate-100">
               ${requests.map(
-                (req) => html`<div data-nav="request-detail" data-id="${req.id}" class="bg-white rounded-2xl p-3.5 border border-slate-200/80 shadow-2xs hover:shadow-xs transition-all flex items-center justify-between cursor-pointer gap-3">
+                (req) => html`<button data-nav="request-detail" data-id="${req.id}" class="w-full text-left px-4 py-3.5 flex items-center justify-between gap-3 hover:bg-slate-50 first:rounded-t-[14px] last:rounded-b-[14px]">
                   <div class="min-w-0">
-                    <h4 class="text-xs font-bold text-slate-900 truncate">${req.title}</h4>
-                    <p class="text-[11px] text-slate-400 font-mono truncate">${req.request_number} · ${REQUEST_TYPE_LABELS[req.request_type as RequestType] || req.request_type}</p>
+                    <h4 class="text-[13px] font-semibold text-slate-900 truncate">${req.title}</h4>
+                    <p class="rsc-muted truncate mt-0.5"><span class="rsc-ref">${req.request_number}</span> · ${REQUEST_TYPE_LABELS[req.request_type as RequestType] || req.request_type}</p>
                   </div>
-                  <div class="flex items-center space-x-2 shrink-0">${renderStatusBadge(req.status)}<span class="text-[11px] text-slate-400 hidden sm:inline">${relativeTime(req.updated_at)}</span></div>
-                </div>`
+                  <div class="flex flex-col items-end gap-1 shrink-0">${renderStatusBadge(req.status, 'request')}<span class="text-[11px] text-slate-400">${relativeTime(req.updated_at)}</span></div>
+                </button>`
               )}
             </div>`}
       </div>
 
       ${activeClaim
-        ? html`<div data-nav="claim-detail" data-id="${activeClaim.id}" class="bg-white rounded-2xl p-4 sm:p-5 border border-slate-200 shadow-xs cursor-pointer hover:border-amber-300 transition-all">
-            <h3 class="font-bold text-xs sm:text-sm text-slate-900 mb-2">Active claim</h3>
-            <div class="flex items-center space-x-2 flex-wrap gap-y-1">
-              <span class="font-bold text-xs sm:text-sm text-slate-900 font-mono">${activeClaim.claim_number}</span>${renderStatusBadge(activeClaim.status)}
-            </div>
-            <p class="text-[11px] text-slate-500 mt-1">Incident: ${formatDate(activeClaim.incident_date)}${activeClaim.metadata?.insured_vehicle ? ` | ${activeClaim.metadata.insured_vehicle}` : ''}</p>
-            <div class="mt-3">
-              <div class="flex justify-between text-[11px] text-slate-500 mb-1"><span>${stageLabel}</span><span class="font-mono">${stageIndex + 1} of ${CLAIM_STAGES.length}</span></div>
-              <div class="w-full bg-slate-100 rounded-full h-2 overflow-hidden"><div class="bg-amber-500 h-2 rounded-full" style="width: ${Math.round(((stageIndex + 1) / CLAIM_STAGES.length) * 100)}%"></div></div>
-            </div>
+        ? html`<div>
+            ${sectionHeader('Active claim')}
+            <button data-nav="claim-detail" data-id="${activeClaim.id}" class="rsc-card rsc-card-link p-4 block">
+              <div class="flex items-start justify-between gap-3">
+                <div class="min-w-0">
+                  <p class="rsc-ref !text-[12px]">${activeClaim.claim_number}</p>
+                  <p class="rsc-heading mt-0.5 truncate">${activeClaim.metadata?.insured_vehicle || 'Motor claim'}</p>
+                  <p class="rsc-muted mt-0.5">Incident on ${formatDate(activeClaim.incident_date)}</p>
+                </div>
+                ${renderStatusBadge(activeClaim.status)}
+              </div>
+              <div class="mt-4">
+                <div class="flex justify-between rsc-muted mb-1.5"><span>${stageLabel}</span><span class="rsc-num">Stage ${stageIndex + 1} of ${CLAIM_STAGES.length}</span></div>
+                <div class="rsc-progress"><span style="width: ${Math.round(((stageIndex + 1) / CLAIM_STAGES.length) * 100)}%"></span></div>
+              </div>
+            </button>
           </div>`
         : ''}
     </div>

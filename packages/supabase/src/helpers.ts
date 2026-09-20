@@ -1,7 +1,16 @@
 import { dataStore, hydrateRemoteState, supabase, unwrap, type ClientRecord } from './client';
 import type { DocumentRecord, DocumentType } from '../../shared/src/types/document';
+import { isOcrEligible } from '../../shared/src/rules/documentRules';
 
 export const DOCUMENT_BUCKET = 'client-documents';
+
+export interface DocumentProcessingResponse {
+  status: DocumentRecord['processing_status'];
+  confidence?: number | null;
+  reason?: string;
+  escalated?: boolean;
+  error?: string;
+}
 
 /** The signed-in user's own client file (clients only). Never falls back to someone else's record. */
 export function getCurrentClient(): ClientRecord | null {
@@ -32,6 +41,7 @@ export async function uploadClientDocument(options: {
   requestId?: string | null;
   claimId?: string | null;
   metadata?: Record<string, unknown>;
+  startProcessing?: boolean;
 }): Promise<DocumentRecord> {
   const uploader = dataStore.getState().currentUser;
   if (!uploader) throw new Error('You must be signed in to upload documents.');
@@ -67,7 +77,54 @@ export async function uploadClientDocument(options: {
   }
 
   await hydrateRemoteState();
-  return insert.data as DocumentRecord;
+  const record = insert.data as DocumentRecord;
+  if (isOcrEligible(record.document_type) && options.startProcessing !== false) void startDocumentProcessing(record.id);
+  return record;
+}
+
+/**
+ * Kick off OCR + rules for an uploaded document without holding up the upload. The function writes
+ * status changes as it goes and realtime refreshes both apps; if it is unreachable the document simply
+ * stays "Pending" and an adviser can still verify it by hand.
+ */
+export async function startDocumentProcessing(documentId: string): Promise<DocumentProcessingResponse | null> {
+  const { data, error } = await supabase.functions.invoke<DocumentProcessingResponse>('process-document', { body: { documentId } });
+  if (error) {
+    let detail = error.message;
+    const response = (error as { context?: Response }).context;
+    if (response) {
+      try {
+        const body = await response.clone().text();
+        if (body) detail += ` (${body})`;
+      } catch {
+        // The response body is optional diagnostic context.
+      }
+    }
+    console.warn('Document processing could not start:', detail);
+    await hydrateRemoteState();
+    return null;
+  }
+  await hydrateRemoteState();
+  return data;
+}
+
+const TERMINAL_PROCESSING_STATUSES = new Set<DocumentRecord['processing_status']>(['auto_completed', 'successful', 'under_review', 'rejected']);
+
+export async function waitForDocumentProcessing(documentId: string, timeoutMs = 45_000, intervalMs = 1_500): Promise<DocumentRecord | null> {
+  const deadline = Date.now() + timeoutMs;
+  do {
+    const { data, error } = await supabase.from('documents').select('*').eq('id', documentId).maybeSingle();
+    if (error) throw new Error(error.message);
+    const document = data as DocumentRecord | null;
+    if (!document || TERMINAL_PROCESSING_STATUSES.has(document.processing_status)) {
+      await hydrateRemoteState();
+      return document;
+    }
+    await new Promise((resolve) => window.setTimeout(resolve, intervalMs));
+  } while (Date.now() < deadline);
+
+  await hydrateRemoteState();
+  return (dataStore.getState().documents.find((document) => document.id === documentId) as DocumentRecord | undefined) ?? null;
 }
 
 /** Open a short-lived signed link to a document in a new tab. */
